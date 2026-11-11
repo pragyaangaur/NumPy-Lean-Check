@@ -146,6 +146,13 @@ def tailmatchImpl (k : Kind) (front : Bool) (a0 n0 : Str) (start end_ : Int) : B
 /-- Bytes in the UTF-8 encoding of a code point (`ucs4_code_to_utf8_char`). -/
 def utf8Size (c : Int) : Int := if c < 0x80 then 1 else if c < 0x800 then 2 else if c < 0x10000 then 3 else 4
 
+/-- The bytes of the UTF-8 encoding of a code point. -/
+def utf8Encode (c : Int) : List Int :=
+  if c < 0x80 then [c]
+  else if c < 0x800 then [0xC0 + c / 64, 0x80 + c % 64]
+  else if c < 0x10000 then [0xE0 + c / 4096, 0x80 + (c / 64) % 64, 0x80 + c % 64]
+  else [0xF0 + c / 262144, 0x80 + (c / 4096) % 64, 0x80 + (c / 64) % 64, 0x80 + c % 64]
+
 def utf8Bytes (s : Str) : Int := (s.map utf8Size).foldl (· + ·) 0
 
 /-- Largest width for which `np.dtype("S<w>")` or `np.dtype("U<w>")` works. The item size must fit in a C `int`, which is 2^31 - 1 bytes. For `U` the item size is four times the width. -/
@@ -318,6 +325,13 @@ def stripCore (mode : Strip) (inLeft inRight : Int → Bool) (a : Str) : Str :=
   if mode == .left then rest
   else (rest.reverse.dropWhile inRight).reverse
 
+/--
+Whether `c` is found in the strip set `ch`. For `S` and `U` this is `find_char` over the `len2` units of `ch`. For `StringDType` the C code takes the one-byte branch for an ASCII character and passes `len2`, the number of code points, as the length of a search over the UTF-8 bytes of `ch` (`string_buffer.h:1263`, `:1316`). When `ch` holds multi-byte characters the byte string is longer than `len2`, so the last bytes are never searched. A character of two or more bytes is searched for in the whole byte string.
+-/
+def inStripSet (k : Kind) (ch : Str) (c : Int) : Bool :=
+  if k == .T && utf8Size c == 1 then ((ch.flatMap utf8Encode).take ch.length).contains c
+  else ch.contains c
+
 /-- `np.strings.strip` and friends. `chars = none` strips whitespace. -/
 def stripImpl (k : Kind) (mode : Strip) (a0 : Str) (chars : Option Str) : Str :=
   let a := readStr k a0
@@ -325,7 +339,7 @@ def stripImpl (k : Kind) (mode : Strip) (a0 : Str) (chars : Option Str) : Str :=
   | none => stripCore mode (isSpace k) (fun c => isSpace k c || (k != .T && c == 0)) a
   | some c0 =>
     let ch := readStr k c0
-    if ch.isEmpty then a else stripCore mode (fun c => ch.contains c) (fun c => ch.contains c) a
+    if ch.isEmpty then a else stripCore mode (inStripSet k ch) (inStripSet k ch) a
 
 /-! ## `slice` -/
 
