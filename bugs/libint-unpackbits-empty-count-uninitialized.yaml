@@ -1,0 +1,11 @@
+id: libint-unpackbits-empty-count-uninitialized
+title: unpackbits returns uninitialised memory instead of zero padding when the input is empty and count is positive
+area: LibInt
+kind: memory
+severity: medium
+numpy_version: 2.5.4
+source: _core/src/multiarray/compiled_base.c:1969
+property: NumpyLean.LibInt.unpackbits_pads_refuted
+summary: >
+  `unpack_bits` creates its output with `PyArray_NewFromDescr` (compiled_base.c:1937), which does not initialise memory, and writes every output element, including the zero padding, inside the loop `while (PyArray_ITER_NOTDONE(it))` over the input (compiled_base.c:1969). The input iterator comes from `PyArray_IterAllButAxis`, which keeps its size at 0 when the input is empty (iterators.c:261). When the input has length 0 along the axis and `count` is positive, the output has `count` elements along the axis, but the loop never runs, so nothing is written. `np.unpackbits(np.empty((0, 1), np.uint8), axis=0, count=8)` returns whatever was in the reused buffer: after freeing `np.full(8, 0xAB, dtype=np.uint8)` it returns eight values of 171, which are not even bits, and `np.unpackbits(np.empty(0, np.uint8), count=5)` does the same for 1-d input. The documentation of `count` says "Counts larger than the available number of bits will add zero padding to the output", so the result should be all zeros. Besides the wrong values, this exposes stale heap contents to the caller.
+upstream: not searched
