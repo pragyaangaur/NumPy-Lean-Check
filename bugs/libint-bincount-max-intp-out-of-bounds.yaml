@@ -1,0 +1,11 @@
+id: libint-bincount-max-intp-out-of-bounds
+title: bincount wraps the output length for the value 2**63 - 1 and then writes before the start of the output buffer
+area: LibInt
+kind: memory
+severity: high
+numpy_version: 2.5.4
+source: _core/src/multiarray/compiled_base.c:222
+property: NumpyLean.LibInt.bincount_in_bounds_refuted
+summary: >
+  `arr_bincount` computes the output length as `ans_size = mx + 1` (compiled_base.c:222) with no overflow check. For an input whose largest value is `2**63 - 1` the sum overflows `npy_intp` and wraps to `-2**63` on the two's complement builds. The following check `if (ans_size < minlength) ans_size = minlength` (compiled_base.c:224-226) then replaces it by `minlength`, which is 0 by default, so `PyArray_ZEROS` allocates a buffer of `minlength` elements without complaint. The counting loop `ians[numbers[i]] += 1` (compiled_base.c:236) then indexes element `2**63 - 1`, and the byte offset `(2**63 - 1) * 8` wraps to `-8`, so it increments the 8 bytes just before the buffer. `np.bincount(np.array([2**63 - 1]))` returns an empty array instead of raising, and repeating `np.bincount(np.full(10**5, 2**63 - 1), minlength=n)` for a few values of `n` corrupts the heap and kills the interpreter with SIGSEGV ("Fatal Python error: _PyThreadState_Attach"). The documentation says "The length of out is equal to np.amax(x)+1" and gives no limit, so the call should raise the "array is too big" ValueError that it raises for `2**62`. The overflow is undefined behaviour in C, and the reported behaviour is that of the arm64 build.
+upstream: not searched
