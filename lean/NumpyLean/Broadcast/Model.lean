@@ -47,6 +47,8 @@ inductive BErr where
   | opNdim
   /-- "operands could not be broadcast together with remapped shapes" (`nditer_constr.c:1722`). -/
   | iterBcast
+  /-- RuntimeError "this function only supports up to 32 dimensions but the array has N." from `PyArray_IterNew` (`iterators.c:124-129`). -/
+  | legacyDims
   /-- "iterator is too large" (`nditer_constr.c:1711`, raised later through `nditer_api.c:172` because `broadcast_to` asks for a multi index). -/
   | iterTooLarge
   deriving Repr, DecidableEq
@@ -122,9 +124,21 @@ def pyArrayBroadcast (shapes : List (List Int)) : Except BErr (List Int) := do
   if overflowMultiplyList dims 1 < 0 then .error .bcastTooLarge
   else .ok dims
 
-/-- `np.broadcast(*arrays)`, with the argument count check of `multiiter_new_impl` at `iterators.c:1229`. -/
-def npBroadcast (shapes : List (List Int)) : Except BErr (List Int) :=
-  if shapes.length > maxArgs then .error .tooManyArgs else pyArrayBroadcast shapes
+/-- `NPY_MAXDIMS_LEGACY_ITERS`, the dimension limit of the old iterator. -/
+def maxDimsLegacy : Nat := 32
+
+/-- The argument loop of `multiiter_new_impl` at `iterators.c:1247-1285`. Each argument is checked in turn: the 65th argument fails the count check and an argument with more than 32 dimensions fails in `PyArray_IterNew`. -/
+def multiIterArgs : List (List Int) → Nat → Except BErr Unit
+  | [], _ => .ok ()
+  | s :: rest, n =>
+    if n < maxArgs then
+      if s.length > maxDimsLegacy then .error .legacyDims else multiIterArgs rest (n + 1)
+    else .error .tooManyArgs
+
+/-- `np.broadcast(*arrays)` through `multiiter_new_impl` at `iterators.c:1240-1300`. -/
+def npBroadcast (shapes : List (List Int)) : Except BErr (List Int) := do
+  multiIterArgs shapes 0
+  pyArrayBroadcast shapes
 
 /-! ## New arrays and np.broadcast_to -/
 
