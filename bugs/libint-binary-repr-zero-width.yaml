@@ -1,0 +1,11 @@
+id: libint-binary-repr-zero-width
+title: binary_repr returns an empty string for zero with a negative width and ignores width 0 for zero only
+area: LibInt
+kind: inconsistent
+severity: low
+numpy_version: 2.5.4
+source: _core/numeric.py:2074
+property: NumpyLean.LibInt.binaryRepr_nonempty_refuted
+summary: >
+  `binary_repr` handles zero with `return '0' * (width or 1)` (numeric.py:2074-2075). A width of 0 is falsy, so `np.binary_repr(0, width=0)` returns `'0'`, one character longer than the requested width, while `np.binary_repr(1, width=0)` raises "Insufficient bit width=0 provided for binwidth=1" through `err_if_insufficient` (numeric.py:2064). A negative width is truthy, so `np.binary_repr(0, width=-1)` returns the empty string, which is not a representation of any number, while every other number raises for a negative width. The documentation of `width` says "If the width value is insufficient, an error is raised", and zero needs one bit like one does, so both calls with zero should raise.
+upstream: not searched
