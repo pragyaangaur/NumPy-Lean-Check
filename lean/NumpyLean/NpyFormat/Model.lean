@@ -1,4 +1,5 @@
 import NumpyLean.Common.Intp
+import NumpyLean.Shape.Model
 
 /-
 Model of the `.npy` header code in `numpy/lib/_format_impl.py`: `_wrap_header`, `_wrap_header_guess_version` and `_write_array_header` on the writing side. All source lines cited below are relative to `vendor/numpy/numpy/`.
@@ -598,5 +599,46 @@ def readHeader (ver : Nat) (data : List Nat) : Except ReadError Header :=
         | some text =>
           if text.length > maxHeaderSize then .error .tooLarge
           else parseHeaderText v text
+
+/-!
+## What `read_array` does with the shape
+
+`read_array`, `lib/_format_impl.py:781`, turns the shape of the header into an element count with `numpy.multiply.reduce(shape, dtype=numpy.int64)` (line 837), allocates `numpy.ndarray(count, dtype=dtype)` (line 866) and finally reshapes to the shape (lines 893 and 894). The model covers the part that does not depend on the data: a descriptor of itemsize zero such as `|V0`, for which nothing is read and the checks on the count and the reshape are all that is left.
+-/
+
+inductive ReadArrayErr where
+  /-- `ValueError: negative dimensions are not allowed`, from `numpy.ndarray(count)`. -/
+  | negative
+  /-- `OverflowError: Python int too large to convert to C long`. -/
+  | overflow
+  /-- `ValueError: Maximum allowed dimension exceeded`, from converting a dimension above `2**63 - 1` in `reshape`. -/
+  | maxDim
+  /-- `ValueError: can only specify one unknown dimension`. -/
+  | multiple
+  /-- `ValueError: cannot reshape array of size N into shape S`. -/
+  | mismatch
+  /-- The shape mixes entries above `2**63 - 1` with smaller ones, so NumPy builds a float64 array in `multiply.reduce`. The result then depends on the float to integer cast of the platform and is not modelled. -/
+  | floatPath
+  deriving DecidableEq, Repr
+
+/-- Whether `numpy.array(shape)` has dtype `uint64`, `float64` or an object array, for entries outside `int64`. -/
+def shapeCount (shape : List Int) : Except ReadArrayErr Int :=
+  if shape.isEmpty then .ok 1
+  else if shape.any (fun d => d < intpMin || d > 18446744073709551615) then .error .overflow
+  else if shape.any (· > intpMax) && !shape.all (· > intpMax) then .error .floatPath
+  else
+    -- The product is taken in `int64` (or `uint64` and then cast), so it wraps. This is the same as `wrap64` of the exact product.
+    .ok (wrap64 (shape.foldl (· * ·) 1))
+
+/-- `read_array` for an itemsize zero dtype. The result is the shape of the array that comes back. -/
+def readArrayShape (shape : List Int) (fortran : Bool) : Except ReadArrayErr (List Int) := do
+  let count ← shapeCount shape
+  if count < 0 then throw .negative
+  let dims := if fortran then shape.reverse else shape
+  if dims.any (· > intpMax) then throw .maxDim
+  match Shape.fixUnknownDimension dims count with
+  | .error .multipleUnknown => throw .multiple
+  | .error .sizeMismatch => throw .mismatch
+  | .ok r => pure (if fortran then r.reverse else r)
 
 end NumpyLean.NpyFormat
