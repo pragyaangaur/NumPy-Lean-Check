@@ -4,8 +4,8 @@ area: Indexing
 kind: wrong-result
 severity: medium
 numpy_version: 2.5.4
-source: _core/src/multiarray/item_selection.c:252
+source: _core/src/multiarray/item_selection.c:254
 property: NumpyLean.Indexing.take1_clip_uint64_refuted
 summary: >
-  `PyArray_TakeFrom` converts the indices to `intp` with `NPY_ARRAY_SAME_KIND_CASTING` (item_selection.c:252-256). `uint64` to `int64` is a same-kind cast, so an index of `2**63` or more silently wraps to a negative number before the mode is applied. `np.take(np.arange(3), np.array([2**64 - 1], dtype=np.uint64), mode='clip')` returns `[0]`. The documentation says "'clip' mode means that all indices that are too large are replaced by the index that addresses the last element along that axis", so the answer should be `[2]`. In wrap mode the result is the remainder of the wrapped value instead of the remainder of the index. The same arrays give a clear IndexError in raise mode, but its message names the wrapped value, and `choose` refuses `uint64` indices outright with a casting TypeError.
+  `PyArray_TakeFrom` converts the indices to `intp` with `NPY_ARRAY_SAME_KIND_CASTING` (item_selection.c:251-255). `uint64` to `int64` is a same-kind cast, so an index of `2**63` or more silently wraps to a negative number before the mode is applied. `np.take(np.arange(3), np.array([2**64 - 1], dtype=np.uint64), mode='clip')` returns `[0]`. The documentation says "'clip' mode means that all indices that are too large are replaced by the index that addresses the last element along that axis", so the answer should be `[2]`. In wrap mode the result is the remainder of the wrapped value instead of the remainder of the index. The same arrays give a clear IndexError in raise mode, but its message names the wrapped value, and `choose` refuses `uint64` indices outright with a casting TypeError.
 upstream: not searched
