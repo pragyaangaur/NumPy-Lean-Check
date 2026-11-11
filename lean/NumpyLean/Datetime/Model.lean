@@ -298,7 +298,8 @@ def fromStruct (md : Meta) (d : DTS) : Except Err Int :=
         | _ => 0
     if md.num > 1 then
       if ret ≥ 0 then .ok (ret.tdiv md.num)
-      else .ok ((wrap64 (ret - md.num + 1)).tdiv md.num)
+      -- `ret - meta->num + 1` can overflow for `ret` near the int64 minimum. The arm64 and x86-64 builds do not wrap here: the compiler uses the fact that signed overflow is undefined and computes the exact quotient, which the differential test confirms. So this one step is modelled without a wrap.
+      else .ok ((ret - md.num + 1).tdiv md.num)
     else .ok ret
 
 /-! ## Conversion factors -/
