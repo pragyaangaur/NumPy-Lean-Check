@@ -328,9 +328,11 @@ def packbits (shape : List Int) (data : List Int) (isInt : Bool) (axis : Option 
 
 /--
 `unpack_bits` at `compiled_base.c:1865`. `isUbyte` says whether the input dtype is `uint8`. The output axis length is `8 * n` computed in `npy_intp` (`compiled_base.c:1915`, wrapped here), then replaced by `count` when it is non-negative or reduced by `-count` when it is negative (`compiled_base.c:1921-1931`). Positions past `8 * n` are padding zeros (`compiled_base.c:1953`).
+
+The output comes from `PyArray_NewFromDescr` without initialisation, and every element is written inside the loop `while (PyArray_ITER_NOTDONE(it))` over the input. `PyArray_IterAllButAxis` (`iterators.c:261`) keeps the iterator size at 0 when the input is empty, so for an empty input and a non-empty output nothing is written, not even the padding. The model returns `none` for the data in that case, which stands for uninitialised memory.
 -/
 def unpackbits (shape : List Int) (data : List Int) (isUbyte : Bool) (axis : Option Int) (count : Option Int) (big : Bool) :
-    Except BitsErr (List Int × List Int) := do
+    Except BitsErr (List Int × Option (List Int)) := do
   if !isUbyte then throw .dtype
   let (shp, ax) ← checkAxis shape axis
   let (outer, n, inner) := splitAt shp ax
@@ -345,6 +347,7 @@ def unpackbits (shape : List Int) (data : List Int) (isUbyte : Bool) (axis : Opt
   if dim < 0 then throw .negDim
   let outShape := shp.set ax dim
   let total := outer * dim * inner
+  if outer * n * inner = 0 ∧ total > 0 then return (outShape, none)
   let avail := wrap64 (n * 8)
   let out := (List.range total.toNat).map fun (idx0 : Nat) =>
     let idx : Int := idx0
@@ -356,7 +359,7 @@ def unpackbits (shape : List Int) (data : List Int) (isUbyte : Bool) (axis : Opt
       let sh := if big then 7 - t % 8 else t % 8
       (byte / 2 ^ sh.toNat) % 2
     else 0
-  return (outShape, out)
+  return (outShape, some out)
 
 /-! ## isin -/
 
