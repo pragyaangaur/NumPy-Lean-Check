@@ -1,0 +1,9 @@
+name = "NumpyLean"
+defaultTargets = ["NumpyLean", "npdiff"]
+
+[[lean_lib]]
+name = "NumpyLean"
+
+[[lean_exe]]
+name = "npdiff"
+root = "Main"
