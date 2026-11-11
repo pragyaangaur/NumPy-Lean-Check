@@ -799,17 +799,23 @@ def offsetBwd (mask : List Bool) (hs : List Int) : Nat → Int → Nat → Int �
       offsetBwd mask hs fuel d w (if isBus mask hs d w then off + 1 else off)
     else d
 
+/-- When the test for NaT after the roll fires in the compiled library: for a NaT input, for the 'nat' roll, and when a backward roll steps down onto the int64 minimum. A forward roll that wraps onto the int64 minimum does not count. -/
+def rolledToNat (orig rolled : Int) (roll : Roll) : Bool :=
+  orig == nat || (rolled == nat && (roll == .nat || roll == .backward || roll == .preceding || roll == .modifiedpreceding))
+
 /--
 `apply_business_day_offset` (`datetime_busday.c:272`) together with the weekmask check of `business_day_offset` (`datetime_busday.c:476`). `hs` must be normalized. The whole week jump `date += (offset / busdays_in_weekmask) * 7` is `npy_int64` and wraps.
 -/
-def busdayOffset (date offset : Int) (roll : Roll) (mask : List Bool) (hs : List Int) : Except BErr Int :=
+def busdayOffset (date0 offset : Int) (roll : Roll) (mask : List Bool) (hs : List Int) : Except BErr Int :=
   let b : Int := (mask.filter id).length
   if b == 0 then .error .emptyMask
   else
-    match applyRoll date roll mask hs with
+    match applyRoll date0 roll mask hs with
     | .error e => .error e
-    | .ok (date, w) =>
-      if date == nat then .ok nat
+    | .ok (date1, w) =>
+      -- The C code tests `date == NPY_DATETIME_NAT` after the roll (`datetime_busday.c:291`). In the compiled library this test only fires when the input was NaT or the roll was 'nat'. A forward roll from the int64 maximum steps with `++date` onto the int64 minimum, and the compiler, which may assume that the increment does not overflow, has removed the test for that case. The differential test confirms this, so the model tests the cause of NaT and not the value.
+      let date := date1
+      if rolledToNat date0 date roll then .ok nat
       else if offset > 0 then
         let hs := hs.drop (lowerBound date hs)
         let date := wrap64 (date + (offset.tdiv b) * 7)
