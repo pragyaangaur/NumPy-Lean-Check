@@ -167,7 +167,7 @@ theorem packbits_round_trip_small :
   native_decide
 
 /-- PROP libint.unpackbits.count_pads_with_zeros : REFUTED
-Source: the `count` parameter of the `numpy.unpackbits` docstring, "Counts larger than the available number of bits will add zero padding to the output." For an empty input the iterator of `PyArray_IterAllButAxis` has size 0 (`iterators.c:261`), so the loop at `compiled_base.c:1972` never runs and the output of shape `(8, 1)` for `np.unpackbits(np.empty((0, 1), np.uint8), axis=0, count=8)` stays uninitialised. -/
+Source: the `count` parameter of the `numpy.unpackbits` docstring, "Counts larger than the available number of bits will add zero padding to the output." For an empty input the iterator of `PyArray_IterAllButAxis` has size 0 (`iterators.c:261`), so the loop at `compiled_base.c:1969` never runs and the output of shape `(8, 1)` for `np.unpackbits(np.empty((0, 1), np.uint8), axis=0, count=8)` stays uninitialised. -/
 theorem unpackbits_pads_refuted :
     ¬ (∀ sh d a c big r, unpackbits sh d true a (some c) big = .ok r → r.2.isSome) := by
   intro h
