@@ -83,6 +83,41 @@ def diffWrite : Handler
       | .error e => fmtWrapError e
   | _ => "BADARGS"
 
-def handlers : List (String × Handler) := [("npy_wrap", diffWrap), ("npy_write", diffWrite)]
+def fmtReadError : ReadError → String
+  | .eofLen => "ERR eoflen"
+  | .eofHeader => "ERR eofheader"
+  | .tooLarge => "ERR toolarge"
+  | .syntax => "ERR syntax"
+  | .tokenError => "ERR tokenerror"
+  | .malformed => "ERR malformed"
+  | .unhashable => "ERR unhashable"
+  | .notDict => "ERR notdict"
+  | .keys => "ERR keys"
+  | .shape => "ERR shape"
+  | .fortran => "ERR fortran"
+  | .descr => "ERR descr"
+  | .version => "ERR version"
+  | .decode => "ERR decode"
+
+/--
+`npy_read <version> <hex of bytes>` runs `_read_array_header` on a `BytesIO` that holds the bytes after the magic string. It prints `OK <shape> <True|False> <dtype.str>` or `ERR <kind>`.
+-/
+def diffRead : Handler
+  | [ver, hex] =>
+    match readHeader (parseInt ver).toNat (hexToBytes hex) with
+    | .ok h => s!"OK {fmtInts h.shape} {fmtBool h.fortran} {h.dtype}"
+    | .error e => fmtReadError e
+  | _ => "BADARGS"
+
+/-- `npy_open <hex of bytes>` runs `read_magic` and `_check_version` and prints `OK <major>` or `ERR <kind>`. -/
+def diffOpen : Handler
+  | [hex] =>
+    match openMagic (hexToBytes hex) with
+    | .ok m => s!"OK {m}"
+    | .error e => fmtReadError e
+  | _ => "BADARGS"
+
+def handlers : List (String × Handler) :=
+  [("npy_wrap", diffWrap), ("npy_write", diffWrite), ("npy_read", diffRead), ("npy_open", diffOpen)]
 
 end NumpyLean.NpyFormat
