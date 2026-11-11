@@ -4,8 +4,8 @@ area: Indexing
 kind: wrong-result
 severity: medium
 numpy_version: 2.5.4
-source: _core/src/multiarray/compiled_base.c:1228
+source: _core/src/multiarray/compiled_base.c:1232
 property: NumpyLean.Indexing.ravel_clip_uint64_refuted
 summary: >
-  `int_sequence_to_arrays` (compiled_base.c:1017) converts each coordinate with `astype_anyint`, which gives a `uint64` array for a Python int in `[2**63, 2**64)`. The iterator in `arr_ravel_multi_index` then casts it to `intp` with `NPY_SAME_KIND_CASTING` (compiled_base.c:1228), which wraps it to a negative number. `np.ravel_multi_index((2**63,), (3,), mode='clip')` returns 0, although the documentation of mode 'clip' says it clips to the range, which gives 2. `np.ravel_multi_index((2**63,), (3,), mode='wrap')` returns 1, while `2**63 % 3` is 2. Python ints of `2**64` and more raise an error instead, so only this band of values is silently wrong. `unravel_index` has the same cast, and `np.unravel_index(2**63, (3,))` reports "index -9223372036854775808 is out of bounds".
+  `int_sequence_to_arrays` (compiled_base.c:1017) converts each coordinate with `astype_anyint`, which gives a `uint64` array for a Python int in `[2**63, 2**64)`. The iterator in `arr_ravel_multi_index` then casts it to `intp` with `NPY_SAME_KIND_CASTING` (compiled_base.c:1232), which wraps it to a negative number. `np.ravel_multi_index((2**63,), (3,), mode='clip')` returns 0, although the documentation of mode 'clip' says it clips to the range, which gives 2. `np.ravel_multi_index((2**63,), (3,), mode='wrap')` returns 1, while `2**63 % 3` is 2. Python ints of `2**64` and more raise an error instead, so only this band of values is silently wrong. `unravel_index` has the same cast, and `np.unravel_index(2**63, (3,))` reports "index -9223372036854775808 is out of bounds".
 upstream: not searched
