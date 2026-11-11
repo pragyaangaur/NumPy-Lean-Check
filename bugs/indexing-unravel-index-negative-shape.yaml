@@ -1,0 +1,11 @@
+id: indexing-unravel-index-negative-shape
+title: unravel_index accepts a shape with negative entries and returns negative coordinates
+area: Indexing
+kind: wrong-result
+severity: low
+numpy_version: 2.5.4
+source: _core/src/multiarray/compiled_base.c:1361
+property: NumpyLean.Indexing.unravel_coords_nonneg_refuted
+summary: >
+  `arr_unravel_index` parses `shape` with `PyArray_IntpConverter`, which accepts negative integers, and computes the size with `PyArray_OverflowMultiplyList` (multiarraymodule.c:216), whose comment says it multiplies "a List of Non-negative numbers" but which does not check the sign. A product of `-1` is mistaken for the overflow marker and gives "dimensions are too large", and any other product is used as the size. `np.unravel_index(5, (-2, -3))` returns `(-1, 2)` and `np.unravel_index(3, (-1, -4))` returns `(0, 3)`. A shape with a negative entry describes no array, and `np.zeros((-2, -3))` raises "negative dimensions are not allowed". The documentation describes `shape` as "The shape of the array to use for unraveling indices".
+upstream: not searched
