@@ -25,6 +25,8 @@ def errStr : SErr → String
   | .fillLen => "ERR type"
   | .tooLong => "ERR overflow"
   | .stepZero => "ERR value"
+  | .dtype => "ERR type"
+  | .overflow => "ERR overflow"
   | .alloc => "ERR alloc"
 
 def fmtIntExc : Except SErr Int → String
@@ -46,6 +48,53 @@ def diffStrLen : Handler
   | [k, a] => fmtIntRes (strLen (parseKind k) (parseStr a))
   | _ => "BADARGS"
 
+def fmtStrExc : Except SErr Str → String
+  | .ok s => s!"OK {fmtStr s}"
+  | .error e => errStr e
+
+/-- `just <kind> <c|l|r> <a> <width> <fill>` runs `center`, `ljust` or `rjust`. -/
+def diffJust : Handler
+  | [k, p, a, w, f] =>
+    let pos := if p == "c" then Pos.center else if p == "l" then Pos.left else Pos.right
+    fmtStrExc (justImpl (parseKind k) pos (parseStr a) (parseInt w) (parseStr f))
+  | _ => "BADARGS"
+
+/-- `zfill <kind> <a> <width>`. -/
+def diffZfill : Handler
+  | [k, a, w] => fmtStrExc (zfillImpl (parseKind k) (parseStr a) (parseInt w))
+  | _ => "BADARGS"
+
+/-- `expandtabs <kind> <a> <tabsize>`. -/
+def diffExpandtabs : Handler
+  | [k, a, t] => fmtStrExc (expandtabsImpl (parseKind k) (parseStr a) (parseInt t))
+  | _ => "BADARGS"
+
+/-- `replace <kind> <a> <old> <new> <count>`. -/
+def diffReplace : Handler
+  | [k, a, o, n, c] => s!"OK {fmtStr (replaceImpl (parseKind k) (parseStr a) (parseStr o) (parseStr n) (parseInt c))}"
+  | _ => "BADARGS"
+
+/-- `partition <kind> <a> <sep>` and `rpartition`. The three parts are joined by `|`. -/
+def diffPartition (front : Bool) : Handler
+  | [k, a, s] =>
+    match partitionImpl (parseKind k) front (parseStr a) (parseStr s) with
+    | .ok (x, y, z) => s!"OK {fmtStr x}|{fmtStr y}|{fmtStr z}"
+    | .error e => errStr e
+  | _ => "BADARGS"
+
+/-- `strip <kind> <l|r|b> <a> <chars>` where `chars` is `!` for whitespace. -/
+def diffStrip : Handler
+  | [k, m, a, c] =>
+    let mode := if m == "l" then Strip.left else if m == "r" then Strip.right else Strip.both
+    let chars := if c == "!" then none else some (parseStr c)
+    s!"OK {fmtStr (stripImpl (parseKind k) mode (parseStr a) chars)}"
+  | _ => "BADARGS"
+
+/-- `slice <kind> <a> <start> <stop> <step>`. -/
+def diffSlice : Handler
+  | [k, a, s, e, st] => fmtStrExc (sliceImpl (parseKind k) (parseStr a) (parseInt s) (parseInt e) (parseInt st))
+  | _ => "BADARGS"
+
 def handlers : List (String × Handler) := [
   ("find", diffFindLike fun k a n s e => .ok (findImpl k a n s e)),
   ("rfind", diffFindLike fun k a n s e => .ok (rfindImpl k a n s e)),
@@ -54,6 +103,14 @@ def handlers : List (String × Handler) := [
   ("count", diffFindLike fun k a n s e => .ok (countImpl k a n s e)),
   ("startswith", diffTail true),
   ("endswith", diffTail false),
-  ("str_len", diffStrLen)]
+  ("str_len", diffStrLen),
+  ("just", diffJust),
+  ("zfill", diffZfill),
+  ("expandtabs", diffExpandtabs),
+  ("replace", diffReplace),
+  ("partition", diffPartition true),
+  ("rpartition", diffPartition false),
+  ("strip", diffStrip),
+  ("slice", diffSlice)]
 
 end NumpyLean.Strings
