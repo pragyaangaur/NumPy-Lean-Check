@@ -426,11 +426,6 @@ inductive Arg where
   | pyComplex
   deriving DecidableEq, Repr, Inhabited
 
-/-- Drop an argument that is the same object as the one before it (`multiarraymodule.c:3645`). Equal tokens stand for the same object, because the tests create one object per token. -/
-def dropRepeats : List Arg → Option Arg → List Arg
-  | [], _ => []
-  | a :: rest, prev => if prev == some a then dropRepeats rest prev else a :: dropRepeats rest (some a)
-
 /-- The fold over descriptors at `convert_datatype.c:1698-1718`. -/
 def foldInstances (target : Nat) : List Descr → Option Descr → Option (Option Descr)
   | [], acc => some acc
@@ -442,9 +437,10 @@ def foldInstances (target : Nat) : List Descr → Option Descr → Option (Optio
       | none => foldInstances target rest (some c)
       | some r => foldInstances target rest (some (stringCommonInstance r c))
 
-/-- `np.result_type`: `array_result_type` at `multiarraymodule.c:3624-3686` and `PyArray_ResultType` at `convert_datatype.c:1618-1738`. Dtype arguments come first and scalar arguments after them, each group in the order given. `none` is an error. -/
+/-- `np.result_type`: `array_result_type` at `multiarraymodule.c:3624-3686` and `PyArray_ResultType` at `convert_datatype.c:1618-1738`. Dtype arguments come first and scalar arguments after them, each group in the order given. `none` is an error.
+
+The loop at `multiarraymodule.c:3645` skips an argument that is the same object as `previous_obj`, but `previous_obj` is never assigned after its initialisation to `NULL` at line 3641, so nothing is ever skipped. -/
 def resultType (args : List Arg) : Option Descr :=
-  let args := dropRepeats args none
   let descrs := args.filterMap (fun a => match a with | .dtype d => some d | _ => none)
   let scalars := args.filterMap (fun a => match a with
     | .pyInt => some DT.pyInt | .pyFloat => some DT.pyFloat | .pyComplex => some DT.pyComplex | _ => none)
