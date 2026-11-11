@@ -1,0 +1,19 @@
+# Private notes, never published
+AGENTS.md
+HANDOFF.md
+
+# Lean build output
+lean/.lake/
+.lake/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Pinned NumPy source checkout, fetched by scripts/fetch_numpy.sh
+vendor/
+
+# Differential test scratch output
+difftest/out/
+.DS_Store
