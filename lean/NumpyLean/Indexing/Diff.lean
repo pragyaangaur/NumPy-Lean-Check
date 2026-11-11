@@ -92,10 +92,10 @@ def diffRepeat : Handler
     | .error .tooBig => "ERR toobig"
   | _ => "BADARGS"
 
-/-- `diag <rows> <cols> <offset>` prints `OK <size> <start> <step>` or `ERR overflow`. -/
+/-- `diag <rows> <cols> <row stride> <offset>` prints `OK <size> <start> <step>` or `ERR overflow`. Strides are in elements. -/
 def diffDiag : Handler
-  | [r, c, k] =>
-    match diagonal2 (parseInt r) (parseInt c) (parseInt k) with
+  | [r, c, s1, k] =>
+    match diagonal2 (parseInt r) (parseInt c) (parseInt s1) (parseInt k) with
     | .ok (size, start, step) => s!"OK {size} {start} {step}"
     | .error .offsetOverflow => "ERR overflow"
   | _ => "BADARGS"
