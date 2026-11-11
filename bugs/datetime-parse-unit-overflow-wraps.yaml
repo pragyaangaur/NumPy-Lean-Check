@@ -1,0 +1,11 @@
+id: datetime-parse-unit-overflow-wraps
+title: datetime64 from a string with an explicit unit wraps silently when the date does not fit the unit
+area: Datetime
+kind: wrong-result
+severity: high
+numpy_version: 2.5.4
+source: _core/src/multiarray/datetime.c:301
+property: NumpyLean.Datetime.parse_explicit_unit_matches_cast_refuted
+summary: >
+  `np.datetime64('2300-01-01', 'ns')` returns `1715-06-13T00:25:26.290448384` with no error and no warning. `np.array(['2300-01-01'], dtype='M8[ns]')` and `np.array(['2300-01-01']).astype('M8[ns]')` give the same wrong date, and `np.datetime64('1600-01-01', 'ns')` gives a date in 2184. The table in arrays.datetime.rst says nanoseconds cover 1678 AD to 2262 AD, and the cast of the same date from days, `np.datetime64('2300-01-01').astype('M8[ns]')`, raises `OverflowError: Overflow when converting between datetime64 units`. The string path goes through `convert_pyobject_to_datetime` (datetime.c:2343), which calls `NpyDatetime_ConvertDatetimeStructToDatetime64` (datetime.c:301). That function multiplies the day count by 24, 60, 60 and powers of 1000 in `npy_int64` with no overflow check (datetime.c:356-410), so the product wraps. The only acknowledgement in the source is the comment "TODO: If meta->num is really big, there could be overflow" at datetime.c:296, which is about the multiplier and not about ordinary dates. Every unit from hours to attoseconds is affected for dates outside its span, and a wrapped value can even land on the int64 minimum and become NaT.
+upstream: not searched
