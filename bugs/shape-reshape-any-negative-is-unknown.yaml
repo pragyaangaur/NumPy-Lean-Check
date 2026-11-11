@@ -1,0 +1,11 @@
+id: shape-reshape-any-negative-is-unknown
+title: reshape treats every negative dimension as -1
+area: Shape
+kind: docs-mismatch
+severity: low
+numpy_version: 2.5.4
+source: _core/src/multiarray/shape.c:499
+property: NumpyLean.Shape.reshape_only_minus_one_is_unknown_refuted
+summary: >
+  The documentation of numpy.reshape says "One shape dimension can be -1. In this case, the value is inferred from the length of the array and remaining dimensions." The code at shape.c:499 tests `dimensions[i] < 0`, so every negative entry is taken as the unknown dimension. `np.zeros(6).reshape(-5, 2)` returns an array of shape (3, 2) with no error. Array constructors such as `np.zeros((-5, 2))` reject the same shape with "negative dimensions are not allowed".
+upstream: not searched
