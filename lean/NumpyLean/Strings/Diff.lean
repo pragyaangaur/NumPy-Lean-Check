@@ -95,6 +95,30 @@ def diffSlice : Handler
   | [k, a, s, e, st] => fmtStrExc (sliceImpl (parseKind k) (parseStr a) (parseInt s) (parseInt e) (parseInt st))
   | _ => "BADARGS"
 
+/-- A long string is given as `unit:count` pieces joined by `;`, and `_` is empty. The unit is written with the letters `a`, `b` and `c`, which stand for the code units 97, 98 and 233. -/
+def parseSpec (s : String) : Str :=
+  if s == "_" then []
+  else
+    (s.splitOn ";").flatMap fun piece =>
+      match piece.splitOn ":" with
+      | [u, n] =>
+        let unit : Str := u.toList.map fun ch => if ch == 'a' then 97 else if ch == 'b' then 98 else 233
+        (List.replicate (parseInt n).toNat unit).flatten
+      | _ => []
+
+/-- `long <kind> <find|rfind|count> <hay spec> <needle spec> <start> <end>`. -/
+def diffLong : Handler
+  | [k, op, h, n, s, e] =>
+    let kind := parseKind k
+    let a := parseSpec h
+    let nd := parseSpec n
+    let st := parseInt s
+    let en := parseInt e
+    if op == "find" then fmtIntRes (findImpl kind a nd st en)
+    else if op == "rfind" then fmtIntRes (rfindImpl kind a nd st en)
+    else fmtIntRes (countImpl kind a nd st en)
+  | _ => "BADARGS"
+
 def handlers : List (String × Handler) := [
   ("find", diffFindLike fun k a n s e => .ok (findImpl k a n s e)),
   ("rfind", diffFindLike fun k a n s e => .ok (rfindImpl k a n s e)),
@@ -111,6 +135,7 @@ def handlers : List (String × Handler) := [
   ("partition", diffPartition true),
   ("rpartition", diffPartition false),
   ("strip", diffStrip),
-  ("slice", diffSlice)]
+  ("slice", diffSlice),
+  ("long", diffLong)]
 
 end NumpyLean.Strings
