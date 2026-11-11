@@ -121,7 +121,7 @@ inductive RavelErr where
   | invalidEntry
   deriving Repr, DecidableEq
 
-/-- The stride loop at `compiled_base.c:1180-1206`, over the dimensions in the order the loop visits them. -/
+/-- The stride loop at `compiled_base.c:1181-1209`, over the dimensions in the order the loop visits them. -/
 def ravelStridesLoop : List Int → Int → Except RavelErr (List Int)
   | [], _ => .ok []
   | d :: rest, s =>
@@ -139,7 +139,7 @@ def ravelStrides (dims : List Int) (fortran : Bool) : Except RavelErr (List Int)
     return r.reverse
 
 /--
-The per-coordinate switch of `ravel_multi_index_loop` at `compiled_base.c:1085-1117`. `none` means the raise mode found an invalid entry. C `%` truncates.
+The per-coordinate switch of `ravel_multi_index_loop` at `compiled_base.c:1087-1119`. `none` means the raise mode found an invalid entry. C `%` truncates.
 -/
 def ravelCoord (mode : ClipMode) (m j : Int) : Option Int :=
   match mode with
@@ -157,7 +157,7 @@ def ravelCoord (mode : ClipMode) (m j : Int) : Option Int :=
     else some j
   | .clip => if j < 0 then some 0 else if j ≥ m then some (m - 1) else some j
 
-/-- The sum `raveled += j * ravel_strides[i]` at `compiled_base.c:1118`, with the C wrap. -/
+/-- The sum `raveled += j * ravel_strides[i]` at `compiled_base.c:1121`, with the C wrap. -/
 def ravelLoop : List ClipMode → List Int → List Int → List Int → Int → Except RavelErr Int
   | mode :: ms, m :: ds, s :: ss, j :: js, acc =>
     match ravelCoord mode m j with
@@ -166,7 +166,7 @@ def ravelLoop : List ClipMode → List Int → List Int → List Int → Int →
   | _, _, _, _, acc => .ok acc
 
 /--
-`arr_ravel_multi_index` at `compiled_base.c:1140` for one point. Each coordinate is converted by `astype_anyint`, which gives `int64` for a Python int that fits and `uint64` for one in `[2**63, 2**64)`. The iterator then casts to `intp` with `same_kind` casting, which wraps, so the model applies `wrap64`. The zero-dimension check at `compiled_base.c:1070` runs because the count is one.
+`arr_ravel_multi_index` at `compiled_base.c:1140` for one point. Each coordinate is converted by `astype_anyint`, which gives `int64` for a Python int that fits and `uint64` for one in `[2**63, 2**64)`. The iterator then casts to `intp` with `same_kind` casting, which wraps, so the model applies `wrap64`. The zero-dimension check at `compiled_base.c:1072` runs because the count is one.
 -/
 def ravelMultiIndex (coords dims : List Int) (modes : List ClipMode) (fortran : Bool) : Except RavelErr Int := do
   let strides ← ravelStrides dims fortran
@@ -191,13 +191,13 @@ def overflowMultiplyList : List Int → Int → Int
       let (ov, p) := mulSizesWithOverflow prod d
       if ov then -1 else overflowMultiplyList rest p
 
-/-- The division loop of `unravel_index_loop` at `compiled_base.c:1309-1319`, over the dimensions in visit order. It returns the coordinates in visit order. -/
+/-- The division loop of `unravel_index_loop` at `compiled_base.c:1312-1318`, over the dimensions in visit order. It returns the coordinates in visit order. -/
 def unravelDigits : List Int → Int → List Int
   | [], _ => []
   | d :: rest, v => Int.tmod v d :: unravelDigits rest (Int.tdiv v d)
 
 /--
-`arr_unravel_index` at `compiled_base.c:1336` for one scalar index. The index goes through `astype_anyint` and a `same_kind` cast to `intp`, so a value in `[2**63, 2**64)` wraps. The bounds check is at `compiled_base.c:1303`.
+`arr_unravel_index` at `compiled_base.c:1336` for one scalar index. The index goes through `astype_anyint` and a `same_kind` cast to `intp`, so a value in `[2**63, 2**64)` wraps. The bounds check is at `compiled_base.c:1304`.
 -/
 def unravelIndex (val : Int) (dims : List Int) (fortran : Bool) : Except UnravelErr (List Int) :=
   let size := overflowMultiplyList dims 1
@@ -211,7 +211,7 @@ def unravelIndex (val : Int) (dims : List Int) (fortran : Bool) : Except Unravel
 /-! ## The wrap loop of take, put and choose -/
 
 /--
-The `NPY_WRAP` loop shared by `npy_fasttake_impl` (`item_selection.c:97-108`), `PyArray_PutTo` (`item_selection.c:487-497`) and `PyArray_Choose` (`item_selection.c:1185-1196`). It adds or subtracts `maxItem` one step at a time. The result is the final index and the number of loop iterations, or `none` when the loop never ends, which happens when `maxItem` is zero and the loop is entered. For a positive `maxItem` the final index is the floor remainder.
+The `NPY_WRAP` loop shared by `npy_fasttake_impl` (`item_selection.c:97-110`), `PyArray_PutTo` (`item_selection.c:494-506` and `item_selection.c:550-562`) and `PyArray_Choose` (`item_selection.c:1160-1171`). It adds or subtracts `maxItem` one step at a time. The result is the final index and the number of loop iterations, or `none` when the loop never ends, which happens when `maxItem` is zero and the loop is entered. For a positive `maxItem` the final index is the floor remainder.
 -/
 def wrapLoop (tmp maxItem : Int) : Option (Int × Nat) :=
   if tmp < 0 then
@@ -238,7 +238,7 @@ inductive TakeErr where
   deriving Repr, DecidableEq
 
 /--
-`PyArray_TakeFrom` at `item_selection.c:234` and `npy_fasttake_impl` at `item_selection.c:41`, for a 1-D array of length `n` and one index. The result is the source position that is copied. Indices are converted to `intp` with `same_kind` casting (`item_selection.c:252`), so a `uint64` index wraps. The empty-axis check is at `item_selection.c:345`.
+`PyArray_TakeFrom` at `item_selection.c:234` and `npy_fasttake_impl` at `item_selection.c:41`, for a 1-D array of length `n` and one index. The result is the source position that is copied. Indices are converted to `intp` with `same_kind` casting (`item_selection.c:254`), so a `uint64` index wraps. The empty-axis check is at `item_selection.c:346`.
 -/
 def take1 (n idx : Int) (mode : ClipMode) : Except TakeErr Int :=
   let tmp := wrap64 idx
@@ -266,7 +266,7 @@ inductive PutErr where
   deriving Repr, DecidableEq
 
 /--
-`PyArray_PutTo` at `item_selection.c:384` for a 1-D array of `n` elements, one index and `nv` values. The result is the position written, or `none` when nothing is written because `values` is empty (`item_selection.c:424`). The index is converted with `PyArray_ContiguousFromAny` to `intp`.
+`PyArray_PutTo` at `item_selection.c:384` for a 1-D array of `n` elements, one index and `nv` values. The result is the position written, or `none` when nothing is written because `values` is empty (`item_selection.c:429`). The index is converted with `PyArray_ContiguousFromAny` to `intp`.
 -/
 def put1 (n idx nv : Int) (mode : ClipMode) : Except PutErr (Option Int) :=
   if n = 0 then .error .emptyArray
@@ -291,7 +291,7 @@ inductive ChooseErr where
   | hang
   deriving Repr, DecidableEq
 
-/-- The choice of `PyArray_Choose` at `item_selection.c:1176-1206` for one element, with `n` choices. -/
+/-- The choice of `PyArray_Choose` at `item_selection.c:1152-1182` for one element, with `n` choices. -/
 def choose1 (n mi : Int) (mode : ClipMode) : Except ChooseErr Int :=
   if mi < 0 ∨ mi ≥ n then
     match mode with
@@ -316,14 +316,14 @@ inductive RepeatErr where
   | tooBig
   deriving Repr, DecidableEq
 
-/-- The non-broadcast loop at `item_selection.c:937-945`. `total += counts[j]` has no overflow check. -/
+/-- The non-broadcast loop at `item_selection.c:942-949`. `total += counts[j]` has no overflow check. -/
 def repeatSum : List Int → Int → Except RepeatErr Int
   | [], total => .ok total
   | c :: rest, total =>
     if c < 0 then .error .negativeCount else repeatSum rest (wrap64 (total + c))
 
 /--
-The length of the output axis of `PyArray_Repeat` at `item_selection.c:895`, for a 1-D array of length `n` and the given counts, followed by the size check of `PyArray_NewFromDescr_int` (`ctors.c:725-757`) for one dimension with item size `itemsize`. A single count broadcasts, and `total = counts[0] * n` at `item_selection.c:934` has no overflow check and no sign check.
+The length of the output axis of `PyArray_Repeat` at `item_selection.c:895`, for a 1-D array of length `n` and the given counts, followed by the size check of `PyArray_NewFromDescr_int` (`ctors.c:725-757`) for one dimension with item size `itemsize`. A single count broadcasts, and `total = counts[0] * n` at `item_selection.c:939` has no overflow check and no sign check.
 -/
 def repeatTotal (n : Int) (counts : List Int) (itemsize : Int) : Except RepeatErr Int := do
   let broadcast := counts.length = 1
@@ -350,7 +350,7 @@ inductive DiagErr where
 def diagonal2 (r c s1 offset : Int) : Except DiagErr (Int × Int × Int) :=
   if offset < -(2 : Int) ^ 31 ∨ offset ≥ (2 : Int) ^ 31 then .error .offsetOverflow
   else
-    -- `item_selection.c:2364-2373`: a non-negative offset moves along axis 2, a negative one along axis 1.
+    -- `item_selection.c:2363-2372`: a non-negative offset moves along axis 2, a negative one along axis 1.
     let dim1 := if offset ≥ 0 then r else r + offset
     let dim2 := if offset ≥ 0 then c - offset else c
     let start := if offset ≥ 0 then offset else -offset * s1
