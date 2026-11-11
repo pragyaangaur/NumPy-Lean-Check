@@ -64,19 +64,19 @@ inductive Err
   | genericUnits
   /-- `OverflowError`: "Overflow when converting between datetime64 units" from `_datetime_scale_with_overflow_check` (`_core/src/multiarray/_datetime.h:364`). -/
   | scaleOverflow
-  /-- `OverflowError`: "Integer overflow while computing the conversion factor between NumPy datetime units" (`datetime.c:1137`). -/
+  /-- `OverflowError`: "Integer overflow while computing the conversion factor between NumPy datetime units" (`datetime.c:1136`). -/
   | factorOverflow
-  /-- `ValueError`: "Cannot convert from specific units to generic units" (`datetime.c:1078`). -/
+  /-- `ValueError`: "Cannot convert from specific units to generic units" (`datetime.c:1076`). -/
   | toGeneric
-  /-- `OverflowError`: "Integer overflow getting a common metadata divisor" (`datetime.c:1629`). -/
+  /-- `OverflowError`: "Integer overflow getting a common metadata divisor" (`datetime.c:1637`). -/
   | gcdOverflow
-  /-- `TypeError`: "Cannot get a common metadata divisor ... incompatible nonlinear base time units" (`datetime.c:1609`). -/
+  /-- `TypeError`: "Cannot get a common metadata divisor ... incompatible nonlinear base time units" (`datetime.c:1619`). -/
   | incompatibleUnits
   deriving DecidableEq, Repr
 
 /-! ## Calendar -/
 
-/-- `npy_datetimestruct` (`_core/include/numpy/ndarraytypes.h:899`). NaT is a year equal to `NPY_DATETIME_NAT`. `att` is the C field `as`. -/
+/-- `npy_datetimestruct` (`_core/include/numpy/ndarraytypes.h:900`). NaT is a year equal to `NPY_DATETIME_NAT`. `att` is the C field `as`. -/
 structure DTS where
   year : Int := 1970
   month : Int := 1
@@ -99,7 +99,7 @@ def extractUnit (d unit : Int) : Int × Int :=
 def isLeap (y : Int) : Bool :=
   y % 4 == 0 && (y.tmod 100 != 0 || y.tmod 400 == 0)
 
-/-- `_days_per_month_table` (`datetime.c:103`), indexed by month 1 to 12. -/
+/-- `_days_per_month_table` (`datetime.c:101`), indexed by month 1 to 12. -/
 def daysInMonth (leap : Bool) (month : Int) : Int :=
   let t : List Int := if leap then [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
     else [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
@@ -141,7 +141,7 @@ def daysToYearsdays (days : Int) : Int × Int :=
     else (year0, d0)
   (year + 2000, d)
 
-/-- The month loop at `datetime.c:285`. If the loop ran out, the C code would leave the month and day at the values the caller set, which are 1 and 1. -/
+/-- The month loop at `datetime.c:279`. If the loop ran out, the C code would leave the month and day at the values the caller set, which are 1 and 1. -/
 def monthLoop (leap : Bool) : Nat → Int → Int × Int
   | 0, _ => (1, 1)
   | fuel + 1, d =>
@@ -250,7 +250,7 @@ def toStruct (md : Meta) (dt0 : Int) : Except Err DTS :=
         let (u, r) := extractUnit r (1000 * 1000)
         .ok { dateOfDays days with hour := hh, min := mi, sec := se, us := u, ps := r }
       | .fs =>
-        -- The whole range is about 2.6 hours either side of the epoch (`datetime.c:556`).
+        -- The whole range is about 2.6 hours either side of the epoch (`datetime.c:560`).
         let (hh, r) := extractUnit dt (1000 * 1000 * 1000 * 1000 * 1000 * 60 * 60)
         let z := if hh < 0 then { z with year := 1969, month := 12, day := 31, hour := hh + 24 }
           else { z with hour := hh }
@@ -260,7 +260,7 @@ def toStruct (md : Meta) (dt0 : Int) : Except Err DTS :=
         let (p, r) := extractUnit r 1000
         .ok { z with min := mi, sec := se, us := u, ps := p, att := r * 1000 }
       | .att =>
-        -- The whole range is about 9.2 seconds either side of the epoch (`datetime.c:574`).
+        -- The whole range is about 9.2 seconds either side of the epoch (`datetime.c:577`).
         let (se, r) := extractUnit dt (1000 * 1000 * 1000 * 1000 * 1000 * 1000)
         let z := if se < 0 then { z with year := 1969, month := 12, day := 31, hour := 23, min := 59, sec := se + 60 }
           else { z with sec := se }
@@ -304,7 +304,7 @@ def fromStruct (md : Meta) (d : DTS) : Except Err Int :=
 
 /-! ## Conversion factors -/
 
-/-- `_datetime_factors` (`datetime.c:984`), indexed by the enum value. -/
+/-- `_datetime_factors` (`datetime.c:983`), indexed by the enum value. -/
 def factorTable : List Int := [1, 1, 7, 1, 24, 60, 60, 1000, 1000, 1000, 1000, 1000, 1000, 1, 0]
 
 /-- The loop of `get_datetime_units_factor` (`datetime.c:1009`). A factor with any of the top eight bits set is reported as 0. -/
@@ -319,7 +319,7 @@ def unitsFactorLoop : Nat → Nat → Nat → Int → Int
 /-- `get_datetime_units_factor` (`datetime.c:1009`). It walks every enum value from `big` up to `little`, including the gap value 3. -/
 def unitsFactor (big little : DUnit) : Int := unitsFactorLoop 16 big.code little.code 1
 
-/-- `_uint64_euclidean_gcd` (`datetime.c:1033`). On non-negative inputs the loop computes the greatest common divisor, with gcd(0, y) = y. -/
+/-- `_uint64_euclidean_gcd` (`datetime.c:1031`). On non-negative inputs the loop computes the greatest common divisor, with gcd(0, y) = y. -/
 def euclidGcd (x y : Int) : Int := Int.ofNat (Nat.gcd x.toNat y.toNat)
 
 /--
@@ -351,11 +351,11 @@ def convFactor (src dst : Meta) : Except Err (Int × Int) :=
 
 /-! ## Casting between datetime units -/
 
-/-- The nonlinear units, whose datetimes are cast through a struct (`dtype_transfer.c:1018`). -/
+/-- The nonlinear units, whose datetimes are cast through a struct (`dtype_transfer.c:1014`). -/
 def nonlinear (u : DUnit) : Bool := u == .Y || u == .M
 
 /--
-`astype` from `datetime64[src]` to `datetime64[dst]`. Equal metadata is a plain copy (`time_to_time_get_loop`, `datetime.c:4016`). Otherwise `get_nbo_cast_datetime_transfer_function` (`dtype_transfer.c:974`) first computes the conversion factor and fails if it overflowed. If either unit is years or months it converts through `npy_datetimestruct` with `_strided_to_strided_datetime_general_cast` (`dtype_transfer.c:775`), which has no overflow check. Otherwise it scales with `_datetime_scale_with_overflow_check`.
+`astype` from `datetime64[src]` to `datetime64[dst]`. Equal metadata is a plain copy (`time_to_time_get_loop`, `datetime.c:4017`). Otherwise `get_nbo_cast_datetime_transfer_function` (`dtype_transfer.c:974`) first computes the conversion factor and fails if it overflowed. If either unit is years or months it converts through `npy_datetimestruct` with `_strided_to_strided_datetime_general_cast` (`dtype_transfer.c:775`), which has no overflow check. Otherwise it scales with `_datetime_scale_with_overflow_check`.
 -/
 def castDatetime (src dst : Meta) (v : Int) : Except Err Int :=
   if src.base == dst.base && src.num == dst.num then .ok v
@@ -427,7 +427,7 @@ def compareDatetimes (m1 : Meta) (v1 : Int) (m2 : Meta) (v2 : Int) : Except Err 
 
 /-! ## ISO 8601 printing -/
 
-/-- `lossless_unit_from_datetimestruct` (`datetime_strings.c:803`). -/
+/-- `lossless_unit_from_datetimestruct` (`datetime_strings.c:823`). -/
 def losslessUnit (d : DTS) : DUnit :=
   if d.att.tmod 1000 != 0 then .att
   else if d.att != 0 then .fs
@@ -456,7 +456,7 @@ def three (n : Int) (scale : Int) : String :=
   String.ofList [digitChar ((n.tdiv (100 * scale)).tmod 10), digitChar ((n.tdiv (10 * scale)).tmod 10), digitChar ((n.tdiv scale).tmod 10)]
 
 /--
-`NpyDatetime_MakeISO8601Datetime` (`datetime_strings.c:868`) with `local = 0`, `utc = 0` and `same_kind` casting, which is what `np.datetime_as_string` uses by default. `base = none` is `NPY_FR_ERROR`, the automatic unit. The output buffer is always long enough on this path, so the "too short" error is not modelled.
+`NpyDatetime_MakeISO8601Datetime` (`datetime_strings.c:893`) with `local = 0`, `utc = 0` and `same_kind` casting, which is what `np.datetime_as_string` uses by default. `base = none` is `NPY_FR_ERROR`, the automatic unit. The output buffer is always long enough on this path, so the "too short" error is not modelled.
 -/
 def makeISO (d : DTS) (base : Option DUnit) : String :=
   if d.year == nat || base == some .generic then "NaT"
@@ -487,7 +487,7 @@ def datetimeAsString (md : Meta) (v : Int) (unit : Option (Option DUnit)) : Exce
 
 /-! ## ISO 8601 parsing -/
 
-/-- Errors of `NpyDatetime_ParseISO8601Datetime` (`datetime_strings.c:220`). -/
+/-- Errors of `NpyDatetime_ParseISO8601Datetime` (`datetime_strings.c:223`). -/
 inductive PErr
   /-- "Error parsing datetime string ... at position N". -/
   | parse (pos : Nat)
@@ -527,14 +527,14 @@ def twoDigits : List Char → Option (Int × List Char)
   | a :: b :: rest => if isDigitC a && isDigitC b then some (10 * digitVal a + digitVal b, rest) else none
   | _ => none
 
-/-- Up to six fractional digits, multiplied up to six places (`datetime_strings.c:551`). Returns the value, the digit count and the rest. -/
+/-- Up to six fractional digits, multiplied up to six places (`datetime_strings.c:574`). Returns the value, the digit count and the rest. -/
 def sixDigits (cs : List Char) : Int × Nat × List Char :=
   (List.range 6).foldl (fun (v, n, cs) _ =>
     match cs with
     | c :: rest => if isDigitC c then (10 * v + digitVal c, n + 1, rest) else (10 * v, n, cs)
     | [] => (10 * v, n, cs)) (0, 0, cs)
 
-/-- The year digit loop at `datetime_strings.c:396`. `out->year` is `npy_int64` and wraps. -/
+/-- The year digit loop at `datetime_strings.c:392`. `out->year` is `npy_int64` and wraps. -/
 def yearDigits : List Char → Int → Nat → Int × Nat × List Char
   | c :: rest, y, n => if isDigitC c then yearDigits rest (wrap64 (10 * y + digitVal c)) (n + 1) else (y, n, c :: rest)
   | [], y, n => (y, n, [])
@@ -543,7 +543,7 @@ def skipSpaces : List Char → Nat → List Char × Nat
   | c :: rest, n => if isSpaceC c then skipSpaces rest (n + 1) else (c :: rest, n)
   | [], n => ([], n)
 
-/-- The code after the `parse_timezone` label (`datetime_strings.c:655`) and the trailing whitespace check. `pos` is the index of the first character of `cs`. -/
+/-- The code after the `parse_timezone` label (`datetime_strings.c:637`) and the trailing whitespace check. `pos` is the index of the first character of `cs`. -/
 def parseTimezone (d : DTS) (cs : List Char) (pos : Nat) : Except PErr DTS :=
   match cs with
   | [] => .ok d
@@ -575,7 +575,7 @@ def parseTimezone (d : DTS) (cs : List Char) (pos : Nat) : Except PErr DTS :=
             tail (addMinutes d (-60 * oh - om)) rest6 p6
     else tail d cs pos
 
-/-- The fractional seconds at `datetime_strings.c:551-632`. `cs` starts after the '.'. -/
+/-- The fractional seconds at `datetime_strings.c:574-635`. `cs` starts after the '.'. -/
 def parseFraction (d : DTS) (cs : List Char) (pos : Nat) : Except PErr (DTS × DUnit) :=
   let more (cs : List Char) : Bool := match cs with | c :: _ => isDigitC c | [] => false
   let (u, n1, cs1) := sixDigits cs
@@ -592,7 +592,7 @@ def parseFraction (d : DTS) (cs : List Char) (pos : Nat) : Except PErr (DTS × D
       let d := { d with att := a }
       (parseTimezone d cs3 (p2 + n3)).map (·, if n3 > 3 then .att else .fs)
 
-/-- The time part, from the hour on (`datetime_strings.c:478`). `cs` starts after the 'T' or ' '. -/
+/-- The time part, from the hour on (`datetime_strings.c:486`). `cs` starts after the 'T' or ' '. -/
 def parseTime (d : DTS) (cs : List Char) (pos : Nat) : Except PErr (DTS × DUnit) :=
   match twoDigits cs with
   | none => .error (.parse pos)
@@ -630,9 +630,9 @@ def parseTime (d : DTS) (cs : List Char) (pos : Nat) : Except PErr (DTS × DUnit
       | _ => (parseTimezone d cs pos).map (·, .h)
 
 /--
-`NpyDatetime_ParseISO8601Datetime` (`datetime_strings.c:220`) for a string of ASCII characters. Returns the struct and the best unit for the string. `unitGeneric` is true when the caller asked for generic units.
+`NpyDatetime_ParseISO8601Datetime` (`datetime_strings.c:223`) for a string of ASCII characters. Returns the struct and the best unit for the string. `unitGeneric` is true when the caller asked for generic units.
 
-Note that the sign test at `datetime_strings.c:404` looks at `str[0]`, the first character of the whole string, and not at the character that the sign skip at `datetime_strings.c:383` consumed after the leading whitespace.
+Note that the sign test at `datetime_strings.c:398` looks at `str[0]`, the first character of the whole string, and not at the character that the sign skip at `datetime_strings.c:379` consumed after the leading whitespace.
 -/
 def parseISO (s : List Char) (unitGeneric : Bool := false) : Except PErr (DTS × DUnit) :=
   let low := s.map lowerC
@@ -790,7 +790,7 @@ def applyRoll (date : Int) (roll : Roll) (mask : List Bool) (hs : List Int) : Ex
       | .raise => .error .nonBusiness
     else .ok (date, w)
 
-/-- The stepping loop of `apply_business_day_offset` for a positive remaining offset (`datetime_busday.c:313`). -/
+/-- The stepping loop of `apply_business_day_offset` for a positive remaining offset (`datetime_busday.c:312`). -/
 def offsetFwd (mask : List Bool) (hs : List Int) : Nat → Int → Nat → Int → Int
   | 0, d, _, _ => d
   | fuel + 1, d, w, off =>
@@ -823,7 +823,7 @@ def busdayOffset (date0 offset : Int) (roll : Roll) (mask : List Bool) (hs : Lis
     match applyRoll date0 roll mask hs with
     | .error e => .error e
     | .ok (date1, w) =>
-      -- The C code tests `date == NPY_DATETIME_NAT` after the roll (`datetime_busday.c:291`). In the compiled library this test only fires when the input was NaT or the roll was 'nat'. A forward roll from the int64 maximum steps with `++date` onto the int64 minimum, and the compiler, which may assume that the increment does not overflow, has removed the test for that case. The differential test confirms this, so the model tests the cause of NaT and not the value.
+      -- The C code tests `date == NPY_DATETIME_NAT` after the roll (`datetime_busday.c:290`). In the compiled library this test only fires when the input was NaT or the roll was 'nat'. A forward roll from the int64 maximum steps with `++date` onto the int64 minimum, and the compiler, which may assume that the increment does not overflow, has removed the test for that case. The differential test confirms this, so the model tests the cause of NaT and not the value.
       let date := date1
       if rolledToNat date0 date roll then .ok nat
       else if offset > 0 then
@@ -844,7 +844,7 @@ def busdayOffset (date0 offset : Int) (roll : Roll) (mask : List Bool) (hs : Lis
         .ok (offsetBwd mask hs (((-off).toNat + 1) * rollFuel hs) date w off)
       else .ok date
 
-/-- The remaining days loop of `apply_business_day_count` (`datetime_busday.c:412`). The fuel stands in for the C `while (date_begin < date_end)`, which has no bound of its own. -/
+/-- The remaining days loop of `apply_business_day_count` (`datetime_busday.c:416`). The fuel stands in for the C `while (date_begin < date_end)`, which has no bound of its own. -/
 def countLoop (mask : List Bool) : Nat → Int → Int → Nat → Int → Option Int
   | 0, b, e, _, c => if b < e then none else some c
   | fuel + 1, b, e, w, c =>
