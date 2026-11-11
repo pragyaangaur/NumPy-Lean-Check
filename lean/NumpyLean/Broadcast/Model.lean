@@ -29,21 +29,21 @@ def int32Max : Int := 2147483647
 inductive BErr where
   /-- "shape mismatch: objects cannot be broadcast to a single shape. Mismatch is between arg i ... and arg j ..." (`iterators.c:1128`). -/
   | mismatch (i j : Nat)
-  /-- "broadcast dimensions too large." (`iterators.c:1191`). -/
+  /-- "broadcast dimensions too large." (`iterators.c:1192`). -/
   | bcastTooLarge
-  /-- "Need at least 0 and at most 64 array objects." (`iterators.c:1229`). -/
+  /-- "Need at least 0 and at most 64 array objects." (`iterators.c:1233`). -/
   | tooManyArgs
   /-- "maximum supported dimension for an ndarray is currently 64, found N" (`conversion_utils.c:179`). -/
   | maxDims
   /-- "Maximum allowed dimension exceeded", a shape entry outside `npy_intp` (`conversion_utils.c:98`). -/
   | conv
-  /-- "negative dimensions are not allowed" (`ctors.c:735`), or in `broadcast_to` "all elements of broadcast shape must be non-negative" (`_stride_tricks_impl.py:453`). -/
+  /-- "negative dimensions are not allowed" (`ctors.c:740`), or in `broadcast_to` "all elements of broadcast shape must be non-negative" (`_stride_tricks_impl.py:453`). -/
   | negative
-  /-- "array is too big; `arr.size * arr.dtype.itemsize` is larger than the maximum possible size." (`ctors.c:746`). -/
+  /-- "array is too big; `arr.size * arr.dtype.itemsize` is larger than the maximum possible size." (`ctors.c:750`). -/
   | tooBig
   /-- "cannot broadcast a non-scalar to a scalar array" (`_stride_tricks_impl.py:451`). -/
   | scalar
-  /-- "input operand has more dimensions than allowed by the axis remapping" (`nditer_constr.c:1514`). -/
+  /-- "input operand has more dimensions than allowed by the axis remapping" (`nditer_constr.c:1515`). -/
   | opNdim
   /-- "operands could not be broadcast together with remapped shapes" (`nditer_constr.c:1722`). -/
   | iterBcast
@@ -171,7 +171,7 @@ def iterBroadcastOp : List Int → List Int → Nat → Nat → Except BErr (Lis
     else if b != o && o != 1 then .error .iterBcast
     else iterBroadcastOp bshape rest off (idim + 1)
 
-/-- The iterator size loop at `nditer_constr.c:1699-1716`. Unlike `PyArray_OverflowMultiplyList` it does not stop at a zero, but a zero keeps the product at zero. -/
+/-- The iterator size loop at `nditer_constr.c:1694-1716`. Unlike `PyArray_OverflowMultiplyList` it does not stop at a zero, but a zero keeps the product at zero. -/
 def iterSizeOverflows : List Int → Int → Bool
   | [], _ => false
   | d :: rest, prod =>
@@ -189,7 +189,7 @@ def broadcastTo (opShape : List Int) (itemsize : Int) (shape : List Int) : Excep
   let ondim := opShape.length
   if ondim > ndim then throw .opNdim
   let bshape ← iterBroadcastOp shape opShape (ndim - ondim) 0
-  -- nditer_constr.c:1567, an entry 1 of `itershape` must not have been expanded.
+  -- nditer_constr.c:1568, an entry 1 of `itershape` must not have been expanded.
   if (shape.zip bshape).any (fun (s, b) => s == 1 && b != 1) then throw .iterBcast
   if iterSizeOverflows bshape 1 then throw .iterTooLarge
   let opStrides := freshStrides opShape itemsize
@@ -262,7 +262,7 @@ inductive RErr where
 /-- `newdims[i]` and `olddims[i]` with an out-of-range read made visible. -/
 def at? (l : List Int) (i : Nat) : Option Int := l[i]?
 
-/-- The inner `while (np != op)` loop at `shape.c:414-422`. Each step reads one more entry, so `fuel` equal to the total length is enough. -/
+/-- The inner `while (np != op)` loop at `shape.c:410-417`. Each step reads one more entry, so `fuel` equal to the total length is enough. -/
 def growUntilEqual (newdims olddims : List Int) : Nat → Int → Int → Nat → Nat → Option (Nat × Nat)
   | 0, _, _, _, _ => none
   | fuel + 1, np, op, nj, oj =>
@@ -276,14 +276,14 @@ def growUntilEqual (newdims olddims : List Int) : Nat → Int → Int → Nat �
       | some d => growUntilEqual newdims olddims fuel np (wrap64 (op * d)) nj (oj + 1)
       | none => none
 
-/-- The combine check at `shape.c:425-440` for axes `ok` from `oi` to `oj - 2`. -/
+/-- The combine check at `shape.c:419-434` for axes `ok` from `oi` to `oj - 2`. -/
 def canCombine (olddims oldstrides : List Int) (fOrder : Bool) (oi oj : Nat) : Bool :=
   (List.range (oj - 1 - oi)).all fun t =>
     let ok := oi + t
     if fOrder then oldstrides.getD (ok + 1) 0 == wrap64 (olddims.getD ok 0 * oldstrides.getD ok 0)
     else oldstrides.getD ok 0 == wrap64 (olddims.getD (ok + 1) 0 * oldstrides.getD (ok + 1) 0)
 
-/-- The C-order stride block at `shape.c:451-455`: the last entry is `s` and each earlier one is the next stride times the next dimension. -/
+/-- The C-order stride block at `shape.c:443-449`: the last entry is `s` and each earlier one is the next stride times the next dimension. -/
 def cBlock : List Int → Int → List Int
   | [], _ => []
   | [_], s => [s]
@@ -291,12 +291,12 @@ def cBlock : List Int → Int → List Int
     let r := cBlock rest s
     wrap64 (r.headD 0 * rest.headD 0) :: r
 
-/-- The Fortran stride block at `shape.c:444-448`. -/
+/-- The Fortran stride block at `shape.c:437-442`. -/
 def fBlock : List Int → Int → List Int
   | [], _ => []
   | d :: rest, s => s :: fBlock rest (wrap64 (s * d))
 
-/-- The outer `while` loop at `shape.c:410-458`. `acc` holds the new strides found so far, so `acc.length` is `ni`. -/
+/-- The outer `while` loop at `shape.c:406-453`. `acc` holds the new strides found so far, so `acc.length` is `ni`. -/
 def nocopyLoop (newdims olddims oldstrides : List Int) (fOrder : Bool) : Nat → Nat → Nat → List Int → Except RErr (List Int)
   | 0, _, _, _ => .error .unreachable
   | fuel + 1, ni, oi, acc =>
@@ -313,14 +313,14 @@ def nocopyLoop (newdims olddims oldstrides : List Int) (fOrder : Bool) : Nat →
           nocopyLoop newdims olddims oldstrides fOrder fuel nj oj (acc ++ strides)
     else .ok acc
 
-/-- `_attempt_nocopy_reshape` at `shape.c:379-476`. Axes of length one are removed from the old array first (`shape.c:398-404`). -/
+/-- `_attempt_nocopy_reshape` at `shape.c:379-471`. Axes of length one are removed from the old array first (`shape.c:393-399`). -/
 def attemptNocopyReshape (dims strides : List Int) (itemsize : Int) (newdims : List Int) (fOrder : Bool) : Except RErr (List Int) := do
   let kept := (dims.zip strides).filter (fun (d, _) => d != 1)
   let olddims := kept.map (·.1)
   let oldstrides := kept.map (·.2)
   let acc ← nocopyLoop newdims olddims oldstrides fOrder (newdims.length + 1) 0 0 []
   let ni := acc.length
-  -- shape.c:463-472. In Fortran order with `ni == 0` the C code reads `newdims[-1]`.
+  -- shape.c:455-468. In Fortran order with `ni == 0` the C code reads `newdims[-1]`.
   let last ← if ni ≥ 1 then .ok (acc.getD (ni - 1) 0) else if fOrder then .error .unreachable else .ok itemsize
   let last := if fOrder then wrap64 (last * newdims.getD (ni - 1) 0) else last
   .ok (acc ++ (List.range (newdims.length - ni)).map (fun _ => last))
