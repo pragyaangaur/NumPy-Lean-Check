@@ -94,7 +94,7 @@ theorem take1_clip_ok (n idx : Int) (hn : 0 < n) :
     · split <;> omega
 
 /-- PROP indexing.take.wrap_terminates : REFUTED
-Source: the `numpy.take` documentation, "'wrap' – wrap around", which promises a result for every index. The loop at `item_selection.c:97-108` adds or subtracts the axis length one step at a time, so it never ends when the axis length is zero. `np.take(np.zeros((0, 0)), [0], axis=0, mode='wrap')` reaches it, because the output has size zero and the empty-axis check at `item_selection.c:345` does not fire. -/
+Source: the `numpy.take` documentation, "'wrap' – wrap around", which promises a result for every index. The loop at `item_selection.c:97-110` adds or subtracts the axis length one step at a time, so it never ends when the axis length is zero. `np.take(np.zeros((0, 0)), [0], axis=0, mode='wrap')` reaches it, because the output has size zero and the empty-axis check at `item_selection.c:346` does not fire. -/
 theorem wrapLoop_terminates_refuted :
     ¬ (∀ t m : Int, 0 ≤ m → 0 ≤ t → (wrapLoop t m).isSome) := by
   intro h
@@ -110,7 +110,7 @@ theorem wrapLoop_iterations_refuted :
   exact absurd this (by decide)
 
 /-- PROP indexing.take.clip_matches_documented_clip : REFUTED
-Source: the `numpy.take` documentation, "'clip' – clip to the range (all indices that are too large are replaced by the index that addresses the last element along that axis)". A `uint64` index of `2**64 - 1` is too large but is cast to `intp` with `same_kind` casting at `item_selection.c:252`, becomes `-1`, and is clipped to `0`. -/
+Source: the `numpy.take` documentation, "'clip' – clip to the range (all indices that are too large are replaced by the index that addresses the last element along that axis)". A `uint64` index of `2**64 - 1` is too large but is cast to `intp` with `same_kind` casting at `item_selection.c:254`, becomes `-1`, and is clipped to `0`. -/
 theorem take1_clip_uint64_refuted :
     ¬ (∀ n idx : Int, 0 < n → 0 ≤ idx → idx < 2 ^ 64 → take1 n idx .clip = .ok (min idx (n - 1))) := by
   intro h
@@ -118,7 +118,7 @@ theorem take1_clip_uint64_refuted :
   exact absurd this (by decide)
 
 /-- PROP indexing.put.raise_rejects_out_of_bounds : REFUTED
-Source: the `numpy.put` documentation, "'raise' – raise an error (default)" for indices out of range. With an empty `values`, `PyArray_PutTo` returns at `item_selection.c:424` before it looks at the indices, so `np.put(np.arange(3), [100], [])` succeeds. -/
+Source: the `numpy.put` documentation, "'raise' – raise an error (default)" for indices out of range. With an empty `values`, `PyArray_PutTo` returns at `item_selection.c:429` before it looks at the indices, so `np.put(np.arange(3), [100], [])` succeeds. -/
 theorem put1_raise_refuted :
     ¬ (∀ n idx nv : Int, 0 < n → (idx < -n ∨ idx ≥ n) → put1 n idx nv .raise = .error .outOfBounds) := by
   intro h
@@ -158,7 +158,7 @@ theorem unravel_coords_nonneg_refuted :
   exact absurd this (by decide)
 
 /-- PROP indexing.unravel_index.message_reports_input : REFUTED
-Source: the error message "index %d is out of bounds for array with size %d" at `compiled_base.c:1324`, which should name the index the user passed. A Python int of `2**63` is cast to `intp` with `same_kind` casting and the message names `-9223372036854775808`. This is a message only and has no bug record. -/
+Source: the error message "index %d is out of bounds for array with size %d" at `compiled_base.c:1325`, which should name the index the user passed. A Python int of `2**63` is cast to `intp` with `same_kind` casting and the message names `-9223372036854775808`. This is a message only and has no bug record. -/
 theorem unravel_message_refuted :
     ¬ (∀ (v size w : Int) (dims : List Int), unravelIndex v dims false = .error (.outOfBounds w size) → w = v) := by
   intro h
@@ -175,7 +175,7 @@ theorem ravel_nonneg_refuted :
   exact absurd this (by decide)
 
 /-- PROP indexing.ravel_multi_index.clip_matches_documented_clip : REFUTED
-Source: the `numpy.ravel_multi_index` documentation, "'clip' – clip to the range". The coordinate `2**63` on an axis of length 3 should clip to 2. `astype_anyint` gives `uint64` and the `same_kind` cast of the iterator (`compiled_base.c:1228`) wraps it to `-2**63`, which clips to 0. -/
+Source: the `numpy.ravel_multi_index` documentation, "'clip' – clip to the range". The coordinate `2**63` on an axis of length 3 should clip to 2. `astype_anyint` gives `uint64` and the `same_kind` cast of the iterator (`compiled_base.c:1232`) wraps it to `-2**63`, which clips to 0. -/
 theorem ravel_clip_uint64_refuted :
     ¬ (∀ (c d : Int), 0 < d → 0 ≤ c → c < 2 ^ 64 → ravelMultiIndex [c] [d] [.clip] false = .ok (min c (d - 1))) := by
   intro h
@@ -183,7 +183,7 @@ theorem ravel_clip_uint64_refuted :
   exact absurd this (by decide)
 
 /-- PROP indexing.repeat.length_matches_writes : REFUTED
-Source: memory safety. `npy_fastrepeat_impl` (`item_selection.c:812-838`) copies `counts[j]` elements for every `j`, so the output allocated by `PyArray_Repeat` must have exactly that many. The length is computed by `total = counts[0] * n` at `item_selection.c:934` or by `total += counts[j]` at `item_selection.c:944`, with no overflow check. For four elements repeated `2**62` times the length wraps to 0 and the copy writes past the end of the buffer. -/
+Source: memory safety. `npy_fastrepeat_impl` (`item_selection.c:812-838`) copies `counts[j]` elements for every `j`, so the output allocated by `PyArray_Repeat` must have exactly that many. The length is computed by `total = counts[0] * n` at `item_selection.c:939` or by `total += counts[j]` at `item_selection.c:948`, with no overflow check. For four elements repeated `2**62` times the length wraps to 0 and the copy writes past the end of the buffer. -/
 theorem repeat_length_refuted :
     ¬ (∀ (n : Int) (counts : List Int) (t : Int), repeatTotal n counts 8 = .ok t → t = repeatWrites n counts) := by
   intro h
@@ -191,7 +191,7 @@ theorem repeat_length_refuted :
   exact absurd this (by decide)
 
 /-- PROP indexing.repeat.rejects_negative_counts : REFUTED
-Source: the error "repeats may not contain negative values." at `item_selection.c:939`. The check only runs when the counts do not broadcast, so `np.repeat(np.arange(0), -5)` returns an empty array while `np.repeat(np.arange(1), [-5])` with one element and `np.repeat(np.arange(2), [-5, 1])` raise. -/
+Source: the error "repeats may not contain negative values." at `item_selection.c:945`. The check only runs when the counts do not broadcast, so `np.repeat(np.arange(0), -5)` returns an empty array while `np.repeat(np.arange(1), [-5])` with one element and `np.repeat(np.arange(2), [-5, 1])` raise. -/
 theorem repeat_negative_refuted :
     ¬ (∀ (n c : Int) (t : Int), c < 0 → repeatTotal n [c] 8 ≠ .ok t) := by
   intro h
