@@ -35,4 +35,4 @@ def gen(rng):
 
 
 if __name__ == "__main__":
-    main(gen)
+    main(gen, exe="npdiff_shape")
