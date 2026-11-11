@@ -51,7 +51,7 @@ def diffDiv : Handler
       | _ => "BADOP"
   | _ => "BADARGS"
 
-/-- `pow <ty> <path> <xs> <ys>` prints `OK <values> _` or `ERR negexp`. -/
+/-- `pow <ty> <path> <xs> <ys>` prints `OK <values> <flags>` or `ERR negexp`. -/
 def diffPow : Handler
   | [ty, path, xs, ys] =>
     match parseTy ty with
@@ -59,12 +59,12 @@ def diffPow : Handler
     | some t =>
       let xs := parseInts xs
       let ys := parseInts ys
-      let r : Except PowErr (List Int) :=
-        if path == "scalar" then (powerScalar t (xs.headD 0) (ys.headD 0)).map fun v => [v]
-        else if path == "bcast" then powerArrayBcast t xs (ys.headD 0)
-        else powerArray t xs ys
+      let r : Except PowErr (List Int × Flags) :=
+        if path == "scalar" then (powerScalar t (xs.headD 0) (ys.headD 0)).map fun (v, f) => ([v], f)
+        else if path == "bcast" then (powerArrayBcast t xs (ys.headD 0)).map fun vs => (vs, .clear)
+        else (powerArray t xs ys).map fun vs => (vs, .clear)
       match r with
-      | .ok vs => s!"OK {fmtInts vs} _"
+      | .ok (vs, f) => s!"OK {fmtInts vs} {fmtFlags f}"
       | .error .negativeExponent => "ERR negexp"
   | _ => "BADARGS"
 
@@ -111,7 +111,20 @@ def diffUnary : Handler
       | _ => "BADOP"
   | _ => "BADARGS"
 
+/-- `mul <ty> <path> <xs> <ys>` prints `OK <values> <flags>`. -/
+def diffMul : Handler
+  | [ty, path, xs, ys] =>
+    match parseTy ty with
+    | none => "BADTYPE"
+    | some t =>
+      let ps := operands path (parseInts xs) (parseInts ys)
+      if path == "scalar" then
+        let rs := ps.map fun (a, b) => multiplyScalar t a b
+        s!"OK {fmtInts (rs.map (·.1))} {fmtFlags (foldFlags (rs.map (·.2)))}"
+      else s!"OK {fmtInts (ps.map fun (a, b) => multiplyArray t a b)} _"
+  | _ => "BADARGS"
+
 def handlers : List (String × Handler) :=
-  [("div", diffDiv), ("pow", diffPow), ("gl", diffGcdLcm), ("shift", diffShift), ("un", diffUnary)]
+  [("div", diffDiv), ("pow", diffPow), ("gl", diffGcdLcm), ("shift", diffShift), ("un", diffUnary), ("mul", diffMul)]
 
 end NumpyLean.IntArith
