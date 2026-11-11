@@ -1,0 +1,11 @@
+id: indexing-put-empty-values-skips-bounds-check
+title: put with empty values accepts out-of-bounds indices in raise mode
+area: Indexing
+kind: inconsistent
+severity: low
+numpy_version: 2.5.4
+source: _core/src/multiarray/item_selection.c:429
+property: NumpyLean.Indexing.put1_raise_refuted
+summary: >
+  `PyArray_PutTo` returns early when `values` is empty (`if (nv <= 0) goto finish;` at item_selection.c:429), before any index is checked. `np.put(np.arange(3), [100], [])` therefore succeeds in the default raise mode, while `np.put(np.arange(3), [100], [1])` raises IndexError. The documentation says "'raise' -- raise an error (default)" for out-of-bounds indices and "If `v` is shorter than `ind` it will be repeated as necessary", which an empty `v` cannot be. The empty-array check just above it (item_selection.c:417) does raise for a non-empty `ind`, so the early return is the odd one out.
+upstream: not searched
