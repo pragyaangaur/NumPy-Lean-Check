@@ -4,8 +4,8 @@ area: Indexing
 kind: wrong-result
 severity: low
 numpy_version: 2.5.4
-source: _core/src/multiarray/compiled_base.c:1180
+source: _core/src/multiarray/compiled_base.c:1181
 property: NumpyLean.Indexing.ravel_nonneg_refuted
 summary: >
-  `arr_ravel_multi_index` checks `dims` for overflow (compiled_base.c:1180-1206) and for zero entries (compiled_base.c:1070), but never for negative entries. In raise mode every coordinate is then rejected as "invalid entry in coordinates array", which is the wrong error. In clip mode a coordinate is clipped to `m - 1` for a negative `m`, so `np.ravel_multi_index((1, 1), (-2, 3), mode='clip')` returns -8, and in wrap mode `np.ravel_multi_index((1, 1), (-2, 3), mode='wrap')` returns 4, which is outside any array of six elements. The documentation describes `dims` as "The shape of array into which the indices from multi_index apply" and the result as indices into the flattened array, which are never negative.
+  `arr_ravel_multi_index` checks `dims` for overflow (compiled_base.c:1181-1209) and for zero entries (compiled_base.c:1072), but never for negative entries. In raise mode every coordinate is then rejected as "invalid entry in coordinates array", which is the wrong error. In clip mode a coordinate is clipped to `m - 1` for a negative `m`, so `np.ravel_multi_index((1, 1), (-2, 3), mode='clip')` returns -8, and in wrap mode `np.ravel_multi_index((1, 1), (-2, 3), mode='wrap')` returns 4, which is outside any array of six elements. The documentation describes `dims` as "The shape of array into which the indices from multi_index apply" and the result as indices into the flattened array, which are never negative.
 upstream: not searched
