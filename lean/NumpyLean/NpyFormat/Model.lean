@@ -426,6 +426,8 @@ inductive ReadError where
   | unhashable
   /-- `Header is not a dictionary`. -/
   | notDict
+  /-- `TypeError` from `sorted(d.keys())` in the message of the key error, when the keys cannot be compared. -/
+  | keySort
   /-- `Header does not contain the correct keys`. -/
   | keys
   /-- `shape is not valid`. -/
@@ -450,14 +452,19 @@ structure Header where
 /-- The units of datetime64 and timedelta64 that `np.dtype` accepts inside square brackets. -/
 def datetimeUnits : List String := ["Y", "M", "W", "D", "h", "m", "s", "ms", "us", "ns", "ps", "fs", "as"]
 
-/-- The unit part `[...]` of a datetime descriptor, with an optional count in front of the unit. -/
-def unitOk (s : String) : Bool :=
+/-- The unit part of a datetime descriptor, `[10us]` and the like, as `numpy.dtype` prints it. The count `1` is dropped, `generic` means no unit and a count must fit a C `int`. -/
+def unitText (s : String) : Option String :=
   let cs := s.toList
   let (d, u) := cs.span isDigitC
-  datetimeUnits.contains (String.ofList u) && (d.isEmpty || d.head? != some '0')
+  let name := String.ofList u
+  let n := digitsToInt d
+  if name == "generic" then (if d.isEmpty then some "" else none)
+  else if datetimeUnits.contains name && n ≤ 2147483647 then
+    some ("[" ++ (if d.isEmpty || n == 1 then "" else toString n) ++ name ++ "]")
+  else none
 
 /--
-`numpy.dtype(descr)` for a string, reduced to the descriptors the tests use, returning `dtype.str`. A byte order character is optional, and one byte types always print `|`, all others `<` unless `>` was given. Platform note: `f16` and `c32` need an 80 bit `long double` and do not exist on arm64 macOS, so they are rejected here.
+`numpy.dtype(descr)` for a string, reduced to the descriptors the tests use, returning `dtype.str`. A byte order character is optional, and one byte types always print `|`, all others `<` unless `>` was given. Sizes are read as numbers, so `S05` is `|S5`. Platform note: `f16` and `c32` need an 80 bit `long double` and do not exist on arm64 macOS, so they are rejected here.
 -/
 def dtypeStr (s : String) : Option String :=
   let cs := s.toList
@@ -469,24 +476,34 @@ def dtypeStr (s : String) : Option String :=
   match rest with
   | [] => none
   | k :: tail =>
-    let digits := String.ofList tail
-    let isNum := tail.all isDigitC
-    let n := digitsToInt tail
-    let canon := isNum && (tail.isEmpty || tail.head? != some '0')
-    let withSize (valid : List Nat) (one : Bool) : Option String :=
-      if canon && valid.contains n.toNat then
-        some ((if one then "|" else order) ++ String.singleton k ++ digits)
-      else none
+    let isNum := !tail.isEmpty && tail.all isDigitC
+    let n := (digitsToInt tail).toNat
+    let sized (valid : List Nat) : Option String :=
+      if isNum && valid.contains n then some ((if n == 1 then "|" else order) ++ String.singleton k ++ toString n) else none
+    let flex (pre : String) : Option String :=
+      if tail.isEmpty then some (pre ++ "0") else if isNum && n ≤ 2147483647 then some (pre ++ toString n) else none
     match k with
-    | 'b' => if tail.isEmpty then some "|i1" else if digits == "1" then some "|b1" else none
-    | 'i' => if tail.isEmpty then some (order ++ "i4") else withSize [1, 2, 4, 8] (digits == "1")
-    | 'u' => withSize [1, 2, 4, 8] (digits == "1")
-    | 'f' => if tail.isEmpty then some (order ++ "f4") else withSize [2, 4, 8] false
-    | 'c' => if tail.isEmpty then some "|S1" else withSize [8, 16] false
-    | 'S' => if isNum && (tail.isEmpty || canon || digits == "0") then some ("|S" ++ (if tail.isEmpty then "0" else digits)) else none
-    | 'V' => if isNum && (tail.isEmpty || canon || digits == "0") then some ("|V" ++ (if tail.isEmpty then "0" else digits)) else none
-    | 'U' => if isNum && (tail.isEmpty || canon || digits == "0") then some (order ++ "U" ++ (if tail.isEmpty then "0" else digits)) else none
-    | 'O' => if tail.isEmpty || digits == "4" || digits == "8" then some "|O" else none
+    | 'b' => if tail.isEmpty then some "|i1" else if isNum && n == 1 then some "|b1" else none
+    | '?' => if tail.isEmpty then some "|b1" else none
+    | 'i' => if tail.isEmpty then some (order ++ "i4") else sized [1, 2, 4, 8]
+    | 'u' => sized [1, 2, 4, 8]
+    | 'f' => if tail.isEmpty then some (order ++ "f4") else sized [2, 4, 8]
+    | 'e' => if tail.isEmpty then some (order ++ "f2") else none
+    | 'c' => if tail.isEmpty then some "|S1" else sized [8, 16]
+    | 'S' => flex "|S"
+    | 'V' => flex "|V"
+    | 'U' => flex (order ++ "U")
+    | 'O' => if tail.isEmpty || tail == ['4'] || tail == ['8'] then some "|O" else none
+    | 'M' | 'm' =>
+      let base := order ++ String.singleton k ++ "8"
+      match tail with
+      | [] => some base
+      | ['8'] => some base
+      | '8' :: '[' :: r =>
+        match r.reverse with
+        | ']' :: u => (unitText (String.ofList u.reverse)).map (base ++ ·)
+        | _ => none
+      | _ => none
     | _ => none
 
 /-- `read_magic` and `_check_version`, `lib/_format_impl.py:230` and `199`, on the start of a file: the major version, or an error. A short file is `eofLen`, a wrong prefix is `syntax`, and a version other than 1.0, 2.0 and 3.0 is `version`. -/
@@ -498,6 +515,15 @@ def openMagic (data : List Nat) : Except ReadError Nat :=
     | some maj, some mnr => if mnr == 0 && (maj == 1 || maj == 2 || maj == 3) then .ok maj else .error .version
     | _, _ => .error .eofLen
 
+/-- Whether `sorted` of the keys raises `TypeError`: two distinct keys of kinds that Python cannot order. Strings order with strings, numbers with numbers, and nothing else is modelled. -/
+def sortFails (ks : List Val) : Bool :=
+  let group (k : Val) : Nat :=
+    if k.kind == .str then 1 else if k.kind == .int || k.kind == .flt || k.kind == .bool then 2 else 0
+  let repr (k : Val) : Nat × String × Int := (if k.kind == .str then 1 else 0, k.strv, k.intv)
+  let distinct := ks.map repr |>.eraseDups
+  let gs := ks.map group
+  distinct.length ≥ 2 && (gs.contains 0 || (gs.contains 1 && gs.contains 2))
+
 /-- The checks that follow a successful `literal_eval`, `lib/_format_impl.py:665` to `689`. -/
 def checkHeader (d : Val) : Except ReadError Header :=
   if d.kind != .dict then .error .notDict
@@ -506,7 +532,7 @@ def checkHeader (d : Val) : Except ReadError Header :=
     let expected := ["descr", "fortran_order", "shape"]
     let keysOk := keyStrs.all (·.isSome) && expected.all (fun e => keyStrs.contains (some e))
       && keyStrs.all (fun k => match k with | some s => expected.contains s | none => false)
-    if !keysOk then .error .keys
+    if !keysOk then (if sortFails (d.entries.map (·.1)) then .error .keySort else .error .keys)
     else
       -- A repeated key keeps its last value.
       let look (key : String) : Option Val :=
