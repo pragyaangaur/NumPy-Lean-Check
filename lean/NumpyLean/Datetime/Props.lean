@@ -79,7 +79,7 @@ theorem struct_round_trip :
   decide
 
 /-- PROP datetime.struct.week_round_trip : REFUTED
-Source: as above, for weeks. `set_datetimestruct_days(dt * 7, out)` (`datetime.c:491`) wraps for week values beyond about 1.3e18, so the int64 maximum in weeks comes back as 1317624576693539400. Bug record `datetime-year-week-print-wrap`. -/
+Source: as above, for weeks. `set_datetimestruct_days(dt * 7, out)` (`datetime.c:493`) wraps for week values beyond about 1.3e18, so the int64 maximum in weeks comes back as 1317624576693539400. Bug record `datetime-year-week-print-wrap`. -/
 theorem struct_week_round_trip_refuted :
     ¬ (∀ v : Int, ∀ d, toStruct mW v = .ok d → fromStruct mW d = .ok v) := by
   intro h
@@ -93,14 +93,14 @@ theorem to_struct_nat_only_from_nat_refuted :
   exact h (intpMax - 1969) (by decide) _ rfl (by decide)
 
 /-- PROP datetime.to_struct.week_year_sign : REFUTED
-Source: `doc/source/reference/arrays.datetime.rst`, weeks span 1.7e17 years either side of 1970, so a positive week value is a date after 1970. `set_datetimestruct_days(dt * 7, out)` (`datetime.c:491`) multiplies without an overflow check, so `2**61` weeks prints as the year -6313183731939669. The cast of the same value to days raises `OverflowError`. Bug record `datetime-year-week-print-wrap`. -/
+Source: `doc/source/reference/arrays.datetime.rst`, weeks span 1.7e17 years either side of 1970, so a positive week value is a date after 1970. `set_datetimestruct_days(dt * 7, out)` (`datetime.c:493`) multiplies without an overflow check, so `2**61` weeks prints as the year -6313183731939669. The cast of the same value to days raises `OverflowError`. Bug record `datetime-year-week-print-wrap`. -/
 theorem to_struct_week_year_sign_refuted :
     ¬ (∀ v : Int, v > 0 → ∀ d, toStruct mW v = .ok d → d.year ≥ 1970) := by
   intro h
   exact absurd (h (2 ^ 61) (by decide) _ rfl) (by decide)
 
 /-- PROP datetime.print_parse.day_round_trip : PROVEN
-Source: `NpyDatetime_MakeISO8601Datetime` (`datetime_strings.c:868`) and `NpyDatetime_ParseISO8601Datetime` (`datetime_strings.c:220`) are documented as the ISO 8601 printer and parser. For every day value of `daySample`, including years far outside 0 to 9999 and negative years, printing with unit D and parsing with unit D gives the value back. -/
+Source: `NpyDatetime_MakeISO8601Datetime` (`datetime_strings.c:893`) and `NpyDatetime_ParseISO8601Datetime` (`datetime_strings.c:223`) are documented as the ISO 8601 printer and parser. For every day value of `daySample`, including years far outside 0 to 9999 and negative years, printing with unit D and parsing with unit D gives the value back. -/
 theorem print_parse_day_round_trip :
     (daySample.all fun v =>
       match datetimeAsString mD v none with
@@ -164,7 +164,7 @@ theorem common_unit_commutative :
 def linearUnits : List DUnit := [.W, .D, .h, .m, .s, .ms, .us, .ns, .ps, .fs, .att]
 
 /-- PROP datetime.common_unit.linear_is_finer_unit : PROVEN
-Source: `datetime.c:1580`, "Take the greater base". For two linear units with multiplier 1, the common unit is the finer one with multiplier 1, or the factor overflows. -/
+Source: `datetime.c:1573`, "Take the greater base". For two linear units with multiplier 1, the common unit is the finer one with multiplier 1, or the factor overflows. -/
 theorem common_unit_linear_is_finer_unit :
     (linearUnits.all fun a => linearUnits.all fun b =>
       match commonMeta ⟨a, 1⟩ ⟨b, 1⟩ with
@@ -173,7 +173,7 @@ theorem common_unit_linear_is_finer_unit :
   decide
 
 /-- PROP datetime.compare.equal_means_same_day : REFUTED
-Source: comparison of two datetimes should compare the instants. `np.datetime64('1971', 'Y') == np.datetime64(26, '14D')` is True, but the second value is 1970-12-31. The common unit of years and 14 days is computed as 7 days, because `datetime.c:1580-1594` multiplies the year multiplier by `get_datetime_units_factor(Y, D)`, which is 7 (the week entry of `_datetime_factors`), although the comment above says years have "no even factor". The year is then truncated to whole weeks before the comparison. Bug record `datetime-compare-nonlinear-common-unit`. -/
+Source: comparison of two datetimes should compare the instants. `np.datetime64('1971', 'Y') == np.datetime64(26, '14D')` is True, but the second value is 1970-12-31. The common unit of years and 14 days is computed as 7 days, because `datetime.c:1573-1588` multiplies the year multiplier by `get_datetime_units_factor(Y, D)`, which is 7 (the week entry of `_datetime_factors`), although the comment above says years have "no even factor". The year is then truncated to whole weeks before the comparison. Bug record `datetime-compare-nonlinear-common-unit`. -/
 theorem compare_equal_means_same_day_refuted :
     ¬ (∀ m1 v1 m2 v2 lt, compareDatetimes m1 v1 m2 v2 = .ok (lt, true) →
         castDatetime m1 mD v1 = castDatetime m2 mD v2) := by
@@ -181,7 +181,7 @@ theorem compare_equal_means_same_day_refuted :
   exact absurd (h mY 1 ⟨.D, 14⟩ 26 false rfl) (by decide)
 
 /-- PROP datetime.compare.common_unit_of_year_and_day : REFUTED
-Source: the comments at `datetime.c:1546` and `datetime.c:1558` say that a year multiplier is not multiplied because years have no even factor in days. The common unit of `Y` and `14D` is `7D` and not `D`. -/
+Source: the comments at `datetime.c:1538` and `datetime.c:1560` say that a year multiplier is not multiplied because years have no even factor in days. The common unit of `Y` and `14D` is `7D` and not `D`. -/
 theorem common_unit_of_year_and_day_refuted :
     ¬ (commonMeta mY ⟨.D, 14⟩ = .ok mD) := by
   decide
@@ -196,13 +196,13 @@ theorem parse_nat_spellings :
   decide
 
 /-- PROP datetime.parse.leading_space_keeps_sign : REFUTED
-Source: `NpyDatetime_ParseISO8601Datetime` skips leading whitespace (`datetime_strings.c:377`) and then a sign (`datetime_strings.c:383`), so `" -2000"` should be the year -2000. The negation test at `datetime_strings.c:404` reads `str[0]`, which is the space, so the sign is dropped and the result is the year 2000. Bug record `datetime-parse-leading-space-drops-sign`. -/
+Source: `NpyDatetime_ParseISO8601Datetime` skips leading whitespace (`datetime_strings.c:373`) and then a sign (`datetime_strings.c:379`), so `" -2000"` should be the year -2000. The negation test at `datetime_strings.c:398` reads `str[0]`, which is the space, so the sign is dropped and the result is the year 2000. Bug record `datetime-parse-leading-space-drops-sign`. -/
 theorem parse_leading_space_keeps_sign_refuted :
     ¬ (parseDatetime " -2000".toList none = parseDatetime "-2000".toList none) := by
   decide
 
 /-- PROP datetime.parse.digits_never_nat : REFUTED
-Source: a string of digits is a year (`datetime_strings.c:396`). The year accumulates in `npy_int64` with no overflow check, so `"9223372036854775808"` wraps to the int64 minimum and comes out as NaT, and `"18446744073709551616"` comes out as the year 0. Bug record `datetime-parse-year-digits-wrap`. -/
+Source: a string of digits is a year (`datetime_strings.c:392`). The year accumulates in `npy_int64` with no overflow check, so `"9223372036854775808"` wraps to the int64 minimum and comes out as NaT, and `"18446744073709551616"` comes out as the year 0. Bug record `datetime-parse-year-digits-wrap`. -/
 theorem parse_digits_never_nat_refuted :
     ¬ (∀ s : List Char, s ≠ [] → s.all isDigitC = true →
         ∀ m v, parseDatetime s none = .ok (m, v) → v ≠ nat) := by
@@ -232,7 +232,7 @@ def busDates : List Int := (List.range 24).map fun (i : Nat) => 10950 + (i : Int
 def busHolidays (mask : List Bool) : List Int := normalizeHolidays mask [10957, 10960, 10960, 10966, nat]
 
 /-- PROP datetime.busday_count.reverse_excludes_end : PROVEN
-Source: the `busday_count` docstring, the end date is "excluded from the count" and an end date earlier than the begin date gives a negative count. So for `a < b`, `busday_count(b, a)` is minus the count over the days after `a` up to and including `b`, which is `-busday_count(a + 1, b + 1)`. This is the fix for gh-23197 at `datetime_busday.c:384`. Checked on every pair of 24 dates with two weekmasks and a holiday list with a duplicate and a NaT. -/
+Source: the `busday_count` docstring, the end date is "excluded from the count" and an end date earlier than the begin date gives a negative count. So for `a < b`, `busday_count(b, a)` is minus the count over the days after `a` up to and including `b`, which is `-busday_count(a + 1, b + 1)`. This is the fix for gh-23197 at `datetime_busday.c:390`. Checked on every pair of 24 dates with two weekmasks and a holiday list with a duplicate and a NaT. -/
 theorem busday_count_reverse_excludes_end :
     ([mask5, maskOdd].all fun m => busDates.all fun a => busDates.all fun b =>
       !(decide (a < b)) ||
@@ -247,7 +247,7 @@ theorem busday_count_antisymmetric_refuted :
   exact absurd (h 10950 10952) (by decide)
 
 /-- PROP datetime.busday_count.loop_bounded : REFUTED
-Source: the remaining days loop of `apply_business_day_count` (`datetime_busday.c:412`) is meant to run fewer than 7 times, after `whole_weeks` has removed the full weeks. When `date_end - date_begin` wraps, `whole_weeks` is wrong and the loop runs about 2**64 times. `np.busday_count(np.datetime64(-2**63 + 1, 'D'), np.datetime64(2**63 - 1, 'D'))` does not return. Bug record `datetime-busday-count-hang`. -/
+Source: the remaining days loop of `apply_business_day_count` (`datetime_busday.c:416`) is meant to run fewer than 7 times, after `whole_weeks` has removed the full weeks. When `date_end - date_begin` wraps, `whole_weeks` is wrong and the loop runs about 2**64 times. `np.busday_count(np.datetime64(-2**63 + 1, 'D'), np.datetime64(2**63 - 1, 'D'))` does not return. Bug record `datetime-busday-count-hang`. -/
 theorem busday_count_loop_bounded_refuted :
     ¬ (∀ b e : Int, ∀ m hs, busdayCount 7 b e m hs ≠ .ok none) := by
   intro h
