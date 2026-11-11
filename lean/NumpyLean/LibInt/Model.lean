@@ -139,7 +139,7 @@ def setitemInt (dt : ADType) (x : Int) : Option Int :=
   | .object => some x
 
 /--
-Element `i` of the result from the first two stored values, as the `fill` functions compute it at `arraytypes.c.src:3803` (`buffer[i] = start + i*delta` with `delta = buffer[1] - buffer[0]` in the element type) and at `arraytypes.c.src:3754` for objects (repeated Python addition of `delta`). Integer types wrap, doubles round after every operation, and objects are exact.
+Element `i` of the result from the first two stored values, as the `fill` functions compute it at `arraytypes.c.src:3803` (`buffer[i] = start + i*delta` with `delta = buffer[1] - buffer[0]` in the element type) and at `arraytypes.c.src:3754` for objects (repeated Python addition of `delta`). Integer types wrap and objects are exact. For doubles, `delta` is rounded once, and the arm64 build contracts `start + i*delta` into one fused multiply-add, so that the sum is rounded only once. A build without contraction rounds the product as well, so the double values of long results are platform dependent.
 -/
 def arangeElem (dt : ADType) (v0 v1 : Int) (i : Nat) : Int :=
   if i = 0 then v0
@@ -148,7 +148,7 @@ def arangeElem (dt : ADType) (v0 v1 : Int) (i : Nat) : Int :=
     match dt with
     | .int bits true => wrapSigned bits (v0 + i * (v1 - v0))
     | .int bits false => wrapUnsigned bits (v0 + i * (v1 - v0))
-    | .float64 => roundInt (v0 + roundInt (i * roundInt (v1 - v0)))
+    | .float64 => roundInt (v0 + i * roundInt (v1 - v0))
     | _ => v0 + i * (v1 - v0)
 
 /-- The result of `arange`: the dtype, the length, and the first two stored values (zero when the result is shorter). -/
