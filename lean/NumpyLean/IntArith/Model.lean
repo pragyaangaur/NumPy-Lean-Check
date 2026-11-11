@@ -75,8 +75,8 @@ def floorDivArray (t : IntTy) (n d : Int) : Int × Flags :=
     else
       -- C `/` truncates toward zero.
       let r := Int.tdiv n d
-      -- `r * d` cannot leave the range because `|r * d| ≤ |n|`, but the wrap is written as in C.
-      if (decide (n > 0) != decide (d > 0)) && t.wrap (r * d) != n then (t.wrap (r - 1), .clear)
+      -- `r * d` cannot overflow in C because `|r * d| ≤ |n|`, so no wrap is needed here.
+      if (decide (n > 0) != decide (d > 0)) && r * d != n then (t.wrap (r - 1), .clear)
       else (r, .clear)
   else
     if d == 0 then (0, .dbz) else (Int.tdiv n d, .clear)
@@ -208,12 +208,27 @@ def powerArrayBcast (t : IntTy) (xs : List Int) (in2 : Int) : Except PowErr (Lis
       if fastop then (powerFastPath t in1 in2).getD 0
       else squaredExp t in1 in2start firstBit)
 
-/-- `@name@_power` at `_core/src/umath/scalarmath.c.src:1549-1557` with `@name@_ctype_power` at `scalarmath.c.src:244`. The C function always returns status 0, so no overflow is reported. -/
-def powerScalar (t : IntTy) (a b : Int) : Except PowErr Int :=
+/-- `@name@_power` at `_core/src/umath/scalarmath.c.src:1549-1557` with `@name@_ctype_power` at `scalarmath.c.src:244`. The C function always returns status 0 (`scalarmath.c.src:263`), so the flags are always clear and no overflow is reported. -/
+def powerScalar (t : IntTy) (a b : Int) : Except PowErr (Int × Flags) :=
   if t.signed && b < 0 then .error .negativeExponent
-  else if b == 0 then .ok 1
-  else if a == 1 then .ok 1
-  else .ok (squaredExp t a (b.toNat / 2) (b.toNat % 2 == 1))
+  else if b == 0 then .ok (1, .clear)
+  else if a == 1 then .ok (1, .clear)
+  else .ok (squaredExp t a (b.toNat / 2) (b.toNat % 2 == 1), .clear)
+
+/-! ## multiply
+
+Multiplication is not one of the operations of this area. It is modelled because the properties compare `x ** 2` with `x * x`.
+-/
+
+/--
+`@name@_ctype_multiply` at `_core/src/umath/scalarmath.c.src:122` for types narrower than `long long`, which multiplies in a wider type and reports `NPY_FPE_OVERFLOW` when the product leaves the range, and at `scalarmath.c.src:149` for 64-bit types, which uses `npy_mul_with_overflow`. Both report overflow exactly when the true product is out of range.
+-/
+def multiplyScalar (t : IntTy) (a b : Int) : Int × Flags :=
+  let p := a * b
+  (t.wrap p, if t.inRange p then .clear else .ovf)
+
+/-- The `@TYPE@_multiply` loop at `_core/src/umath/loops_autovec.dispatch.c.src:60`, which wraps and sets no flag. -/
+def multiplyArray (t : IntTy) (a b : Int) : Int := t.wrap (a * b)
 
 /-! ## gcd and lcm -/
 
