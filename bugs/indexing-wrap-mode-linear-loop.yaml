@@ -1,0 +1,11 @@
+id: indexing-wrap-mode-linear-loop
+title: take, put and choose with mode wrap take time proportional to the index value
+area: Indexing
+kind: crash
+severity: medium
+numpy_version: 2.5.4
+source: _core/src/multiarray/item_selection.c:103
+property: NumpyLean.Indexing.wrapLoop_iterations_refuted
+summary: >
+  The wrap mode of `take` (item_selection.c:97-108), `put` (item_selection.c:487-497) and `choose` (item_selection.c:1185-1196) reduces a large index by subtracting the axis length one step at a time instead of taking a remainder. `np.take(np.arange(3), [2**32], mode='wrap')` takes about 0.3 s on an M4 and `np.take(np.arange(3), [2**62], mode='wrap')` would take about 11 years, with the GIL released so that Ctrl-C does not stop it. `ravel_multi_index` handles the same mode with one `%` (compiled_base.c:1093-1108) and returns at once. The documentation says "'wrap' -- wrap around" and `choose` says "value becomes value mod n", with no warning about the cost. One remainder per index gives the same result.
+upstream: not searched
