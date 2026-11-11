@@ -242,8 +242,9 @@ def expandGo (k : Kind) (ts : Int) : Str → Int → Int → Except SErr Str
       if nl' > 2147483647 || nl' < 0 then .error .tooLong
       else (expandGo k ts rest lp' nl').map (c :: ·)
 
+/-- The result is read back through `readStr`, because removing tabs can leave NULs at the end of an `S` or `U` result. -/
 def expandtabsImpl (k : Kind) (a0 : Str) (ts : Int) : Except SErr Str :=
-  expandGo k ts (readStr k a0) 0 0
+  (expandGo k ts (readStr k a0) 0 0).map (readStr k)
 
 /-! ## `replace` -/
 
@@ -292,7 +293,7 @@ def partitionImpl (k : Kind) (front : Bool) (a0 sep0 : Str) : Except SErr (Str �
       if front then .ok (a, [], []) else .ok ([], [], a)
     else
       let i := idx.toNat
-      .ok (a.take i, sep, a.drop (i + sep.length))
+      .ok (readStr k (a.take i), sep, a.drop (i + sep.length))
 
 /-! ## `strip`, `lstrip`, `rstrip` -/
 
@@ -320,7 +321,7 @@ def stripCore (mode : Strip) (inLeft inRight : Int → Bool) (a : Str) : Str :=
 /-- `np.strings.strip` and friends. `chars = none` strips whitespace. -/
 def stripImpl (k : Kind) (mode : Strip) (a0 : Str) (chars : Option Str) : Str :=
   let a := readStr k a0
-  match chars with
+  readStr k <| match chars with
   | none => stripCore mode (isSpace k) (fun c => isSpace k c || (k != .T && c == 0)) a
   | some c0 =>
     let ch := readStr k c0
@@ -347,6 +348,6 @@ def sliceImpl (k : Kind) (a0 : Str) (start stop step : Int) : Except SErr Str :=
   else
     let a := readStr k a0
     let (s, _, n) := adjustSlice a.length start stop (if step < -intpMax then -intpMax else step)
-    .ok ((List.range n.toNat).map fun (i : Nat) => a.getD (s + step * (i : Int)).toNat 0)
+    .ok (readStr k ((List.range n.toNat).map fun (i : Nat) => a.getD (s + step * (i : Int)).toNat 0))
 
 end NumpyLean.Strings
