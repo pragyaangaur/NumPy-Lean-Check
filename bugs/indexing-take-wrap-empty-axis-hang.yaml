@@ -4,8 +4,8 @@ area: Indexing
 kind: crash
 severity: medium
 numpy_version: 2.5.4
-source: _core/src/multiarray/item_selection.c:97
+source: _core/src/multiarray/item_selection.c:107
 property: NumpyLean.Indexing.wrapLoop_terminates_refuted
 summary: >
-  The wrap mode of `npy_fasttake_impl` reduces an index with `while (tmp >= max_item) tmp -= max_item;` (item_selection.c:103-106). When the axis length `max_item` is zero this loop never ends. `PyArray_TakeFrom` guards against an empty axis at item_selection.c:345, but only when the output is non-empty, so `np.take(np.zeros((0, 0)), [0], axis=0, mode='wrap')` reaches the loop: the output has shape (1, 0) and size zero. The process spins forever with the GIL released, so Ctrl-C does not stop it. The same call with mode 'raise' raises IndexError and with mode 'clip' returns an empty array of shape (1, 0). The documentation says only "'wrap' -- wrap around" and does not mention any case that does not return. The negative branch has the same loop, and the arm64 build happens to finish it because the compiler removes a loop without side effects, which C allows.
+  The wrap mode of `npy_fasttake_impl` reduces an index with `while (tmp >= max_item) tmp -= max_item;` (item_selection.c:107-109). When the axis length `max_item` is zero this loop never ends. `PyArray_TakeFrom` guards against an empty axis at item_selection.c:346, but only when the output is non-empty, so `np.take(np.zeros((0, 0)), [0], axis=0, mode='wrap')` reaches the loop: the output has shape (1, 0) and size zero. The process spins forever with the GIL released, so Ctrl-C does not stop it. The same call with mode 'raise' raises IndexError and with mode 'clip' returns an empty array of shape (1, 0). The documentation says only "'wrap' -- wrap around" and does not mention any case that does not return. The negative branch has the same loop, and the arm64 build happens to finish it because the compiler removes a loop without side effects, which C allows.
 upstream: not searched
