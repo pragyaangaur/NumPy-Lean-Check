@@ -702,9 +702,19 @@ def dayOfWeek (date : Int) : Nat :=
   let r := (wrap64 (date - 4)).tmod 7
   (if r < 0 then r + 7 else r).toNat
 
+/-- Insertion into a sorted list. -/
+def insertSorted (x : Int) : List Int → List Int
+  | [] => [x]
+  | y :: ys => if x ≤ y then x :: y :: ys else y :: insertSorted x ys
+
+/-- An ascending sort by structural recursion, so that proofs by `decide` can evaluate it. The C code uses `qsort`; only the sorted order matters because duplicates are removed afterwards. -/
+def insertionSort : List Int → List Int
+  | [] => []
+  | x :: xs => insertSorted x (insertionSort xs)
+
 /-- `normalize_holidays_list` (`datetime_busdaycal.c:224`): sort, drop NaT and duplicates, and keep only holidays on a weekmask day. -/
 def normalizeHolidays (mask : List Bool) (hs : List Int) : List Int :=
-  let sorted := (hs.toArray.qsort (· < ·)).toList
+  let sorted := insertionSort hs
   let (out, _) := sorted.foldl (fun (acc, last) h =>
     if h != nat && h != last then
       if mask.getD (dayOfWeek h) false then (acc ++ [h], h) else (acc, last)
