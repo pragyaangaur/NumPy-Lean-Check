@@ -28,6 +28,7 @@ def classify(e):
         ("cannot reshape array", "ERR mismatch"),
         ("too large to convert to C int", "ERR cint"),
         ("won't fit into a C int", "ERR cint"),
+        ("too large to convert to C long", "ERR cint"),
         ("out of bounds for array of dimension", "ERR axis"),
         ("repeated axis", "ERR repeated"),
         ("duplicate value in 'axis'", "ERR repeated"),
