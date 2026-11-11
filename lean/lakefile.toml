@@ -7,3 +7,39 @@ name = "NumpyLean"
 [[lean_exe]]
 name = "npdiff"
 root = "Main"
+
+[[lean_exe]]
+name = "npdiff_shape"
+root = "exe.Shape"
+
+[[lean_exe]]
+name = "npdiff_intarith"
+root = "exe.IntArith"
+
+[[lean_exe]]
+name = "npdiff_indexing"
+root = "exe.Indexing"
+
+[[lean_exe]]
+name = "npdiff_broadcast"
+root = "exe.Broadcast"
+
+[[lean_exe]]
+name = "npdiff_datetime"
+root = "exe.Datetime"
+
+[[lean_exe]]
+name = "npdiff_strings"
+root = "exe.Strings"
+
+[[lean_exe]]
+name = "npdiff_dtype"
+root = "exe.DType"
+
+[[lean_exe]]
+name = "npdiff_libint"
+root = "exe.LibInt"
+
+[[lean_exe]]
+name = "npdiff_npyformat"
+root = "exe.NpyFormat"
