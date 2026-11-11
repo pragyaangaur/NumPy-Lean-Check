@@ -1,0 +1,11 @@
+id: datetime-parse-year-digits-wrap
+title: datetime64 parsing of a year with too many digits wraps silently, and can give NaT
+area: Datetime
+kind: wrong-result
+severity: low
+numpy_version: 2.5.4
+source: _core/src/multiarray/datetime_strings.c:392
+property: NumpyLean.Datetime.parse_digits_never_nat_refuted
+summary: >
+  `np.datetime64('9223372036854775808')` is `NaT` and `np.datetime64('-9223372036854775808')` is `NaT`, `np.datetime64('18446744073709551616')` is the year 0 and `np.datetime64('18446744073709551617')` is the year 1, all with no error. The year loop `out->year = 10 * out->year + (*substr - '0')` at datetime_strings.c:392 accumulates any number of digits in `npy_int64` without an overflow check, so the year wraps modulo 2**64. A year equal to the int64 minimum is the NaT marker of `npy_datetimestruct`, so a string of digits turns into NaT. Other out of range fields (month, day, hour and so on) raise ValueError with "out of range", and the documentation says only "NAT" in any case means NaT.
+upstream: not searched
