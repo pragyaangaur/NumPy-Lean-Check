@@ -59,26 +59,27 @@ def adjustOffsets (start end_ : Int) (len : Nat) : Int × Int :=
   let s := if start < 0 then (if start + l < 0 then 0 else start + l) else start
   (s, e)
 
-/-- Whether `n` occurs in `a` at position `p`. -/
-def matchAt (a n : Str) (p : Nat) : Bool := (a.drop p).take n.length == n
+/-- All positions at which `n` is a prefix of the window `w`, trying `fuel` positions from `p`. Every search in `string_find`, `string_rfind`, `string_count` and `string_replace` runs on a window of the haystack, and a match must lie inside it. -/
+def matchPositions (n : Str) : Str → Nat → Nat → List Nat
+  | _, _, 0 => []
+  | w, p, fuel + 1 => (if n.isPrefixOf w then [p] else []) ++ matchPositions n w.tail (p + 1) fuel
 
-/-- The lowest match position at or above `p`, trying `fuel` positions. -/
-def findFrom (a n : Str) (p : Nat) : Nat → Option Nat
-  | 0 => none
-  | fuel + 1 => if matchAt a n p then some p else findFrom a n (p + 1) fuel
+/-- The lowest match position of the non-empty `n` in the window `w`. This is `find_char` and `fastsearch` with `FAST_SEARCH`. -/
+def findIn (n w : Str) : Option Nat := (matchPositions n w 0 (w.length + 1 - n.length)).head?
 
-/-- The highest match position at or below `p`, trying `fuel` positions going down. -/
-def rfindFrom (a n : Str) (p : Nat) : Nat → Option Nat
-  | 0 => none
-  | fuel + 1 => if matchAt a n p then some p else if p == 0 then none else rfindFrom a n (p - 1) fuel
+/-- The highest match position of the non-empty `n` in the window `w`. This is `rfind_char` and `fastsearch` with `FAST_RSEARCH`. -/
+def rfindIn (n w : Str) : Option Nat := (matchPositions n w 0 (w.length + 1 - n.length)).getLast?
 
-/-- Count of non-overlapping matches that end at or before `lim`, scanning from `p`, trying `fuel` positions. -/
-def countFrom (a n : Str) (lim : Nat) (p : Nat) : Nat → Nat
-  | 0 => 0
-  | fuel + 1 =>
-    if p + n.length > lim then 0
-    else if matchAt a n p then 1 + countFrom a n lim (p + n.length) fuel
-    else countFrom a n lim (p + 1) fuel
+/-- The number of non-overlapping matches of the non-empty `n` in the window `w`, found from the left (`fastsearch` with `FAST_COUNT`). -/
+def countIn (n : Str) : Str → Nat → Nat
+  | _, 0 => 0
+  | w, fuel + 1 =>
+    if w.length < n.length then 0
+    else if n.isPrefixOf w then 1 + countIn n (w.drop n.length) fuel
+    else countIn n w.tail fuel
+
+/-- The part of `a` that the search sees: the window [s, e) of `adjust_offsets`. -/
+def window (a : Str) (s e : Int) : Str := (a.drop s.toNat).take (e - s).toNat
 
 /-- `string_find` (`string_buffer.h:851`). Returns -1 when the needle is absent. The `T` kind runs the same function on UTF-8 and converts byte offsets back to code point offsets. -/
 def findImpl (k : Kind) (a0 n0 : Str) (start end_ : Int) : Int :=
@@ -88,9 +89,8 @@ def findImpl (k : Kind) (a0 n0 : Str) (start end_ : Int) : Int :=
   if e - s < (n.length : Int) then -1
   else if n.length == 0 then s
   else
-    let fuel := (e - n.length - s + 1).toNat
-    match findFrom a n s.toNat fuel with
-    | some p => (p : Int)
+    match findIn n (window a s e) with
+    | some p => s + (p : Int)
     | none => -1
 
 /-- `string_rfind` (`string_buffer.h:954`). An empty needle gives `end`. -/
@@ -101,10 +101,8 @@ def rfindImpl (k : Kind) (a0 n0 : Str) (start end_ : Int) : Int :=
   if e - s < (n.length : Int) then -1
   else if n.length == 0 then e
   else
-    let hi := (e - n.length).toNat
-    let fuel := (e - n.length - s + 1).toNat
-    match rfindFrom a n hi fuel with
-    | some p => (p : Int)
+    match rfindIn n (window a s e) with
+    | some p => s + (p : Int)
     | none => -1
 
 /-- `string_index`. -/
@@ -126,7 +124,7 @@ def countImpl (k : Kind) (a0 n0 : Str) (start end_ : Int) : Int :=
   else if n.length == 0 then e - s + 1
   else
     -- The search runs on the window [s, e), so a match must end at or before e.
-    (countFrom a n e.toNat s.toNat (e - s + 1).toNat : Nat)
+    ((countIn n (window a s e) (e - s + 1).toNat : Nat) : Int)
 
 /-- `tailmatch` (`string_buffer.h:1110`). `front` is `startswith` and not `front` is `endswith`. In C `end -= len2` runs on a signed `npy_int64` and `len2` is a `size_t`, but both are small after `adjust_offsets`, so there is no wrap. -/
 def tailmatchImpl (k : Kind) (front : Bool) (a0 n0 : Str) (start end_ : Int) : Bool :=
@@ -138,7 +136,7 @@ def tailmatchImpl (k : Kind) (front : Bool) (a0 n0 : Str) (start end_ : Int) : B
   else if n.length == 0 then true
   else
     let off := if front then s else e
-    matchAt a n off.toNat
+    (window a off (off + n.length)) == n
 
 
 /-! ## Sizes of UTF-8 strings and of the output dtype -/
@@ -259,7 +257,7 @@ def expandtabsImpl (k : Kind) (a0 : Str) (ts : Int) : Except SErr Str :=
 def replaceLoop (old new : Str) : Nat → Str → Str
   | 0, rest => rest
   | c + 1, rest =>
-    match findFrom rest old 0 (rest.length + 1 - old.length) with
+    match findIn old rest with
     | none => rest
     | some p => rest.take p ++ new ++ replaceLoop old new c (rest.drop (p + old.length))
 
