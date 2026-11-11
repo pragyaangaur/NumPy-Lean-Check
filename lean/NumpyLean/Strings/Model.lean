@@ -64,19 +64,162 @@ def matchPositions (n : Str) : Str → Nat → Nat → List Nat
   | _, _, 0 => []
   | w, p, fuel + 1 => (if n.isPrefixOf w then [p] else []) ++ matchPositions n w.tail (p + 1) fuel
 
-/-- The lowest match position of the non-empty `n` in the window `w`. This is `find_char` and `fastsearch` with `FAST_SEARCH`. -/
-def findIn (n w : Str) : Option Nat := (matchPositions n w 0 (w.length + 1 - n.length)).head?
+/-! ## The two-way search of `string_fastsearch.h` -/
 
-/-- The highest match position of the non-empty `n` in the window `w`. This is `rfind_char` and `fastsearch` with `FAST_RSEARCH`. -/
+/-- Result of `lex_search` (`string_fastsearch.h:454`): the start of the maximal suffix and the period of the right half. `inv` reverses the alphabet order. The loop adds at least one to `candidate + k + max_suffix` each time, so `4 * m + 4` rounds are enough. -/
+def lexSearchGo (nd : Array Int) (inv : Bool) (m : Nat) : Nat → Nat → Nat → Nat → Nat → Nat × Nat
+  | 0, ms, _, _, per => (ms, per)
+  | fuel + 1, ms, cand, k, per =>
+    if cand + k < m then
+      let a := nd[cand + k]!
+      let b := nd[ms + k]!
+      if (if inv then b < a else a < b) then
+        let cand' := cand + k + 1
+        lexSearchGo nd inv m fuel ms cand' 0 (cand' - ms)
+      else if a == b then
+        if k + 1 != per then lexSearchGo nd inv m fuel ms cand (k + 1) per
+        else lexSearchGo nd inv m fuel ms (cand + per) 0 per
+      else lexSearchGo nd inv m fuel cand (cand + 1) 0 1
+    else (ms, per)
+
+/-- `factorize` (`string_fastsearch.h:547`): the later of the two cuts, with its period. -/
+def factorize (nd : Array Int) (m : Nat) : Nat × Nat :=
+  let (cut1, per1) := lexSearchGo nd false m (4 * m + 4) 0 1 0 1
+  let (cut2, per2) := lexSearchGo nd true m (4 * m + 4) 0 1 0 1
+  if cut1 > cut2 then (cut1, per1) else (cut2, per2)
+
+/-- The data that `preprocess` builds for the needle (`string_fastsearch.h:623`). -/
+structure Prep where
+  nd : Array Int
+  m : Nat
+  cut : Nat
+  period : Nat
+  gap : Nat
+  periodic : Bool
+  table : Array Nat
+
+/--
+`preprocess`. The test for a periodic needle is `memcmp(needle, needle + period, cut)` (`string_fastsearch.h:639`). C's `memcmp` counts bytes and `cut` is a count of characters, so for `char_type = npy_ucs4` only the first `cut` bytes are compared, which is the first `cut / 4` characters and the low `cut % 4` bytes of the next one on a little-endian machine (arm64 and x86-64). `bytes` is 4 for `U` and 1 for `S` and for the UTF-8 loops of `StringDType`. The memcmp is the line that differs from CPython's `stringlib/fastsearch.h`, which multiplies by `STRINGLIB_SIZEOF_CHAR`.
+-/
+def preprocess (nd : Array Int) (m : Nat) (bytes : Nat) : Prep :=
+  let (cut, per) := factorize nd m
+  let full := cut / bytes
+  let rem := cut % bytes
+  let eqFull := (List.range full).all fun i => nd[i]! == nd[per + i]!
+  let eqPart := rem == 0 || nd[full]! % ((256 : Int) ^ rem) == nd[per + full]! % ((256 : Int) ^ rem)
+  let periodic := eqFull && eqPart
+  let period := if periodic then per else max cut (m - cut) + 1
+  let lastIdx := (List.range (m - 1)).reverse.find? fun i => nd[i]! % 64 == nd[m - 1]! % 64
+  let gap := if periodic then 0 else (match lastIdx with | some i => m - 1 - i | none => m)
+  let nfs := min m 255
+  let t0 := Array.replicate 64 nfs
+  let table := (List.range' (m - nfs) nfs).foldl (fun t i => t.set! (nd[i]! % 64).toNat (m - 1 - i)) t0
+  { nd, m, cut, period, gap, periodic, table }
+
+/-- The bad-character skip loop at the top of the window loops. `none` means the window ran past the end, so `two_way` returns -1. -/
+def horspool (P : Prep) (h : Array Int) (len : Nat) : Nat → Nat → Option Nat
+  | 0, wl => some wl
+  | f + 1, wl =>
+    let sh := P.table[(h[wl]! % 64).toNat]!
+    if sh == 0 then some wl
+    else if wl + sh ≥ len then none
+    else horspool P h len f (wl + sh)
+
+/-- The first index in `[lo, hi)` where the needle and the window starting at `win` differ. -/
+def firstMismatch (P : Prep) (h : Array Int) (win lo hi : Nat) : Option Nat :=
+  (List.range' lo (hi - lo)).find? fun i => P.nd[i]! != h[win + i]!
+
+/-- The periodic branch of `two_way` (`string_fastsearch.h:760`). `skip` is true when C jumps to `no_shift` and so skips the bad-character loop. -/
+def twoWayPeriodic (P : Prep) (h : Array Int) (len : Nat) : Nat → Nat → Nat → Bool → Int
+  | 0, _, _, _ => -1
+  | f + 1, wl, memory, skip =>
+    if wl ≥ len && !skip then -1
+    else
+      match (if skip then some wl else horspool P h len len wl) with
+      | none => -1
+      | some wl1 =>
+        let win := wl1 + 1 - P.m
+        match firstMismatch P h win (max P.cut memory) P.m with
+        | some i => twoWayPeriodic P h len f (wl1 + (i - P.cut + 1)) 0 false
+        | none =>
+          match firstMismatch P h win memory P.cut with
+          | some _ =>
+            let wl2 := wl1 + P.period
+            let mem2 := P.m - P.period
+            if wl2 ≥ len then -1
+            else
+              let sh := P.table[(h[wl2]! % 64).toNat]!
+              if sh != 0 then
+                let memJump := max P.cut mem2 - P.cut + 1
+                twoWayPeriodic P h len f (wl2 + max sh memJump) 0 false
+              else twoWayPeriodic P h len f wl2 mem2 true
+          | none => (win : Int)
+
+/-- The non-periodic branch of `two_way` (`string_fastsearch.h:830`). -/
+def twoWayPlain (P : Prep) (h : Array Int) (len : Nat) (per gapJumpEnd : Nat) : Nat → Nat → Int
+  | 0, _ => -1
+  | f + 1, wl =>
+    if wl ≥ len then -1
+    else
+      match horspool P h len len wl with
+      | none => -1
+      | some wl1 =>
+        let win := wl1 + 1 - P.m
+        match firstMismatch P h win P.cut gapJumpEnd with
+        | some _ => twoWayPlain P h len per gapJumpEnd f (wl1 + P.gap)
+        | none =>
+          match firstMismatch P h win gapJumpEnd P.m with
+          | some i => twoWayPlain P h len per gapJumpEnd f (wl1 + (i - P.cut + 1))
+          | none =>
+            match firstMismatch P h win 0 P.cut with
+            | some _ => twoWayPlain P h len per gapJumpEnd f (wl1 + per)
+            | none => (win : Int)
+
+/-- `two_way`: the index of the first match of the prepared needle in `h`, or -1. Each round moves the window right, so `len + 1` rounds are enough, but the round count is also bounded by `len * m` for safety. -/
+def twoWay (P : Prep) (h : Array Int) : Int :=
+  let len := h.size
+  let fuel := 4 * len + 4
+  if P.periodic then twoWayPeriodic P h len fuel (P.m - 1) 0 false
+  else twoWayPlain P h len (max P.gap P.period) (min P.m (P.cut + P.gap)) fuel (P.m - 1)
+
+/-- `two_way_count`: non-overlapping matches, each search starting after the previous match. -/
+def twoWayCount (P : Prep) (w : Array Int) : Nat → Nat → Nat
+  | 0, _ => 0
+  | f + 1, idx =>
+    let r := twoWay P (w.extract idx w.size)
+    if r < 0 then 0 else 1 + twoWayCount P w f (idx + r.toNat + P.m)
+
+/--
+`fastsearch` for `FAST_SEARCH` and `FAST_COUNT` over a window of `n` units with a needle of `m >= 2` units (`string_fastsearch.h:1258`). It returns `none` when the C code takes `adaptive_find`, which this model does not port: that happens when the needle is longer than a third of a haystack of 2500 or more units, and the tests keep `U` away from it.
+-/
+def useTwoWay (n m : Nat) : Option Bool :=
+  if n < 2500 || (m < 100 && n < 30000) || m < 6 then some false
+  else if (m / 4) * 3 < (n / 4) then some true
+  else none
+
+/-- The lowest match position of the non-empty `n` in the window `w`. This is `find_char` and `fastsearch` with `FAST_SEARCH`. For `U` a long window goes through the two-way search with the periodicity test of `UTF32`. -/
+def findIn (k : Kind) (n w : Str) : Option Nat :=
+  if k == .U && n.length ≥ 2 && useTwoWay w.length n.length == some true then
+    let P := preprocess n.toArray n.length 4
+    let r := twoWay P w.toArray
+    if r < 0 then none else some r.toNat
+  else (matchPositions n w 0 (w.length + 1 - n.length)).head?
+
+/-- The highest match position of the non-empty `n` in the window `w`. This is `rfind_char` and `fastsearch` with `FAST_RSEARCH`, which always runs `default_rfind`. -/
 def rfindIn (n w : Str) : Option Nat := (matchPositions n w 0 (w.length + 1 - n.length)).getLast?
 
-/-- The number of non-overlapping matches of the non-empty `n` in the window `w`, found from the left (`fastsearch` with `FAST_COUNT`). -/
-def countIn (n : Str) : Str → Nat → Nat
-  | _, 0 => 0
-  | w, fuel + 1 =>
-    if w.length < n.length then 0
-    else if n.isPrefixOf w then 1 + countIn n (w.drop n.length) fuel
-    else countIn n w.tail fuel
+/-- The number of non-overlapping matches of the non-empty `n` in the window `w`, found from the left (`fastsearch` with `FAST_COUNT`). `rem` is the number of start positions still to try, which is `|w| - |n| + 1` at the start. -/
+def countSpec (n : Str) : Str → Nat → Nat → Nat
+  | _, _, 0 => 0
+  | w, rem, fuel + 1 =>
+    if rem == 0 then 0
+    else if n.isPrefixOf w then 1 + countSpec n (w.drop n.length) (rem - n.length) fuel
+    else countSpec n w.tail (rem - 1) fuel
+
+def countIn (k : Kind) (n w : Str) (fuel : Nat) : Nat :=
+  if k == .U && n.length ≥ 2 && useTwoWay w.length n.length == some true then
+    twoWayCount (preprocess n.toArray n.length 4) w.toArray w.length 0
+  else countSpec n w (w.length + 1 - n.length) fuel
 
 /-- The part of `a` that the search sees: the window [s, e) of `adjust_offsets`. -/
 def window (a : Str) (s e : Int) : Str := (a.drop s.toNat).take (e - s).toNat
@@ -89,7 +232,7 @@ def findImpl (k : Kind) (a0 n0 : Str) (start end_ : Int) : Int :=
   if e - s < (n.length : Int) then -1
   else if n.length == 0 then s
   else
-    match findIn n (window a s e) with
+    match findIn k n (window a s e) with
     | some p => s + (p : Int)
     | none => -1
 
@@ -124,7 +267,7 @@ def countImpl (k : Kind) (a0 n0 : Str) (start end_ : Int) : Int :=
   else if n.length == 0 then e - s + 1
   else
     -- The search runs on the window [s, e), so a match must end at or before e.
-    ((countIn n (window a s e) (e - s + 1).toNat : Nat) : Int)
+    ((countIn k n (window a s e) (e - s + 1).toNat : Nat) : Int)
 
 /-- `tailmatch` (`string_buffer.h:1110`). `front` is `startswith` and not `front` is `endswith`. In C `end -= len2` runs on a signed `npy_int64` and `len2` is a `size_t`, but both are small after `adjust_offsets`, so there is no wrap. -/
 def tailmatchImpl (k : Kind) (front : Bool) (a0 n0 : Str) (start end_ : Int) : Bool :=
@@ -254,12 +397,12 @@ def expandtabsImpl (k : Kind) (a0 : Str) (ts : Int) : Except SErr Str :=
 /-! ## `replace` -/
 
 /-- Replace the first `c` non-overlapping matches of a non-empty `old`, as the loop in `string_replace` does. -/
-def replaceLoop (old new : Str) : Nat → Str → Str
+def replaceLoop (k : Kind) (old new : Str) : Nat → Str → Str
   | 0, rest => rest
   | c + 1, rest =>
-    match findIn old rest with
+    match findIn k old rest with
     | none => rest
-    | some p => rest.take p ++ new ++ replaceLoop old new c (rest.drop (p + old.length))
+    | some p => rest.take p ++ new ++ replaceLoop k old new c (rest.drop (p + old.length))
 
 /-- The interleaving branch for an empty `old`: `new` before each of the first `c` positions. The C loop copies one character of the input after each insertion except the last. -/
 def interleave (new : Str) : Nat → Str → Str
@@ -272,9 +415,9 @@ def interleave (new : Str) : Nat → Str → Str
 /--
 `string_replace` (`string_buffer.h:1372`) with the count already clamped. The `S` and `U` wrapper in `strings.py:1344` clamps with the result of `count`, and the `StringDType` loop clamps in `stringdtype_ufuncs.cpp:1466`. In both a negative count means all matches.
 -/
-def replaceCore (a old new : Str) (count : Nat) : Str :=
+def replaceCore (k : Kind) (a old new : Str) (count : Nat) : Str :=
   if count == 0 || a.length < old.length || (old.length == 0 && new.length == 0) || (old.length == new.length && old == new) then a
-  else if old.length > 0 then replaceLoop old new count a
+  else if old.length > 0 then replaceLoop k old new count a
   else interleave new count a
 
 def replaceImpl (k : Kind) (a0 o0 n0 : Str) (count : Int) : Str :=
@@ -283,7 +426,7 @@ def replaceImpl (k : Kind) (a0 o0 n0 : Str) (count : Int) : Str :=
   let n := readStr k n0
   let found := countImpl k a o 0 intpMax
   let eff := if count < 0 then found else min found count
-  readStr k (replaceCore a o n eff.toNat)
+  readStr k (replaceCore k a o n eff.toNat)
 
 /-! ## `partition` and `rpartition` -/
 
