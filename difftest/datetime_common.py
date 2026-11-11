@@ -54,3 +54,21 @@ def rand_value(rng, unit):
 
 def i64(x):
     return int(np.asarray(x).view("i8").reshape(-1)[0])
+
+
+def rand_moderate(rng, unit):
+    """A value between about year 1700 and year 2240, which every unit down to nanoseconds can hold. Picoseconds and finer get the whole range they can hold."""
+    lim = 98000
+    if unit in AS_PER:
+        lim = min(lim, (2**63 - 1) // (AS_PER["D"] // AS_PER[unit]) - 1)
+    if lim <= 0:
+        return rng.randrange(-2**63 + 1, 2**63)
+    days = rng.randrange(-lim, lim)
+    if unit == "Y":
+        return days // 365
+    if unit == "M":
+        return days // 30
+    if unit == "W":
+        return days // 7
+    per = AS_PER["D"] // AS_PER[unit]
+    return days * per + rng.randrange(0, per) if per > 1 else days * per
