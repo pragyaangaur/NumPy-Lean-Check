@@ -58,8 +58,10 @@ def diffBaseRepr : Handler
     | .error _ => "ERR other"
   | _ => "BADARGS"
 
-def fmtBits : Except BitsErr (List Int × List Int) → String
-  | .ok (shape, data) => s!"OK {fmtInts shape} {fmtInts data}"
+/-- Uninitialised output data is printed as `?`. -/
+def fmtBits : Except BitsErr (List Int × Option (List Int)) → String
+  | .ok (shape, some data) => s!"OK {fmtInts shape} {fmtInts data}"
+  | .ok (shape, none) => s!"OK {fmtInts shape} ?"
   | .error .dtype => "ERR type"
   | .error .axis => "ERR axis"
   | .error .count => "ERR count"
@@ -69,10 +71,10 @@ def fmtBits : Except BitsErr (List Int × List Int) → String
 def diffPack : Handler
   | [shape, data, kind, axis, order] =>
     let shp := if shape == "S" then [] else parseInts shape
-    fmtBits (packbits shp (parseInts data) (kind == "int") (parseOpt axis) (order == "big"))
+    fmtBits ((packbits shp (parseInts data) (kind == "int") (parseOpt axis) (order == "big")).map fun (sh, d) => (sh, some d))
   | _ => "BADARGS"
 
-/-- `unpack <shape> <data> <u8|other> <axis|N> <count|N> <b|l>` prints `OK <shape> <data>` or an error. -/
+/-- `unpack <shape> <data> <u8|other> <axis|N> <count|N> <b|l>` prints `OK <shape> <data>`, with `?` for uninitialised data, or an error. -/
 def diffUnpack : Handler
   | [shape, data, kind, axis, count, order] =>
     let shp := if shape == "S" then [] else parseInts shape
