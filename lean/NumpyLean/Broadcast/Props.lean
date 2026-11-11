@@ -152,7 +152,7 @@ theorem bshape_eq (shape v : List Int) (hl : v.length = shape.length)
   · exact h1
 
 /-- PROP broadcast.broadcast_to.result_shape_is_requested : PROVEN
-Source: `numpy.broadcast_to` docstring, "shape: The shape of the desired array". Whenever `broadcast_to` succeeds, the view has exactly the requested shape. The proof shows that the iterator only changes entries of `itershape` that are 1, and that the check at `_core/src/multiarray/nditer_constr.c:1567` rejects every such change. -/
+Source: `numpy.broadcast_to` docstring, "shape: The shape of the desired array". Whenever `broadcast_to` succeeds, the view has exactly the requested shape. The proof shows that the iterator only changes entries of `itershape` that are 1, and that the check at `_core/src/multiarray/nditer_constr.c:1568` rejects every such change. -/
 theorem broadcastTo_shape (op : List Int) (it : Int) (shape r st : List Int)
     (h : broadcastTo op it shape = .ok (r, st)) : r = shape := by
   unfold broadcastTo at h
@@ -165,7 +165,7 @@ theorem broadcastTo_shape (op : List Int) (it : Int) (shape r st : List Int)
   exact bshape_eq shape _ hl hp hz
 
 /-- PROP broadcast.broadcast_to.agrees_with_broadcast_shapes : REFUTED
-Source: the `numpy.broadcast_to` docstring raises only "If the array is not compatible with the new shape according to NumPy's broadcasting rules". `broadcast_shapes((), (2**61,))` is `(2**61,)`, but `broadcast_to` of a 0-d `int64` array to `(2**61,)` raises "array is too big", because the view must pass the size check of `_core/src/multiarray/ctors.c:744` with its item size. Every ndarray, views included, must have `size * itemsize` inside `npy_intp`, so this is the general array size limit and has no bug record. -/
+Source: the `numpy.broadcast_to` docstring raises only "If the array is not compatible with the new shape according to NumPy's broadcasting rules". `broadcast_shapes((), (2**61,))` is `(2**61,)`, but `broadcast_to` of a 0-d `int64` array to `(2**61,)` raises "array is too big", because the view must pass the size check of `_core/src/multiarray/ctors.c:748` with its item size. Every ndarray, views included, must have `size * itemsize` inside `npy_intp`, so this is the general array size limit and has no bug record. -/
 theorem broadcastTo_vs_shapes_refuted :
     broadcastShapes [[], [2 ^ 61]] = .ok [2 ^ 61] ∧ broadcastTo [] 8 [2 ^ 61] = .error .tooBig := by
   decide
@@ -275,7 +275,7 @@ def reshapeOk : List Int × List Int × List Int × Bool → Bool
     | .error _ => true
 
 /-- PROP broadcast.reshape.nocopy_same_elements : PROVEN
-Source: the comment at `_core/src/multiarray/shape.c:362-377`, that `_attempt_nocopy_reshape` gives strides for the new shape that view the same data in the requested order. Checked on all 224,456 cases of `reshapeCases`, of which 79,028 succeed without a copy: whenever `reshape(..., copy=False)` succeeds, the new strides address the same memory offsets in the same C or Fortran order, and no case reaches the out-of-range reads of the C loop. The universe has 224,456 cases, too many for `decide`, so this uses `native_decide`, which trusts the compiler. -/
+Source: the comment at `_core/src/multiarray/shape.c:356-377`, that `_attempt_nocopy_reshape` fills in strides for the new shape that view the same data in the requested order, and that "Zero strides should work but are untested". The universe includes zero and negative strides. Checked on all 224,456 cases of `reshapeCases`, of which 79,028 succeed without a copy: whenever `reshape(..., copy=False)` succeeds, the new strides address the same memory offsets in the same C or Fortran order, and no case reaches the out-of-range reads of the C loop. The universe has 224,456 cases, too many for `decide`, so this uses `native_decide`, which trusts the compiler. -/
 theorem reshape_nocopy_same_elements : reshapeCases.all reshapeOk = true := by
   native_decide
 
