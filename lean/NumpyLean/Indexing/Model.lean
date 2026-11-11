@@ -350,10 +350,12 @@ inductive DiagErr where
 def diagonal2 (r c s1 offset : Int) : Except DiagErr (Int × Int × Int) :=
   if offset < -(2 : Int) ^ 31 ∨ offset ≥ (2 : Int) ^ 31 then .error .offsetOverflow
   else
-    let (dim1, dim2, off, offStride) :=
-      if offset ≥ 0 then (r, c - offset, offset, 1) else (r + offset, c, -offset, s1)
+    -- `item_selection.c:2364-2373`: a non-negative offset moves along axis 2, a negative one along axis 1.
+    let dim1 := if offset ≥ 0 then r else r + offset
+    let dim2 := if offset ≥ 0 then c - offset else c
+    let start := if offset ≥ 0 then offset else -offset * s1
     let size := if dim2 < dim1 then dim2 else dim1
-    if size < 0 then .ok (0, 0, s1 + 1) else .ok (size, off * offStride, s1 + 1)
+    if size < 0 then .ok (0, 0, s1 + 1) else .ok (size, start, s1 + 1)
 
 /-! ## searchsorted -/
 
