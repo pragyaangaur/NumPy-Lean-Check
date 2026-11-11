@@ -39,14 +39,14 @@ def parseArg (s : String) : Option Arg :=
   | "Pi" => some .pyInt | "Pf" => some .pyFloat | "Pc" => some .pyComplex
   | _ => (parseDescr s).map Arg.dtype
 
-/-- `can_cast <from> <to>` prints `OK` and five digits, one per casting level from `no` to `unsafe`. -/
+/-- `can_cast <from> <to>` prints five digits, one per casting level from `no` to `unsafe`. -/
 def diffCanCast : Handler
   | [a, b] =>
     match parseDescr a, parseDescr b with
     | some f, some t =>
       let bits := [Casting.no, .equiv, .safe, .sameKind, .«unsafe»].map
         (fun c => if canCast f t c then "1" else "0")
-      "OK " ++ String.join bits
+      String.join bits
     | _, _ => "BADARGS"
   | _ => "BADARGS"
 
