@@ -1,0 +1,11 @@
+id: libint-unpackbits-axis-length-wraps
+title: unpackbits wraps the unpacked axis length of an empty array and returns a wrong shape instead of raising
+area: LibInt
+kind: wrong-result
+severity: low
+numpy_version: 2.5.4
+source: _core/src/multiarray/compiled_base.c:1915
+property: NumpyLean.LibInt.unpackbits_wrap_refuted
+summary: >
+  `unpack_bits` multiplies the length of the unpacked axis by 8 with `outdims[axis] *= 8` (compiled_base.c:1915) in `npy_intp` without an overflow check. An empty array may have a dimension as large as `2**63 - 1`, so the product can wrap. `np.unpackbits(np.empty((2**61, 0), np.uint8), axis=0)` returns an array of shape `(0, 0)` because `8 * 2**61` wraps to 0, and `np.unpackbits(np.empty((2**60, 0), np.uint8), axis=0)` raises "negative dimensions are not allowed" because the product wraps to `-2**63`. The documentation says the output has eight bits for every input element along the axis, so the length should be `8 * 2**61`, which does not fit `npy_intp` and should raise a size error. No data is written in either case, because the input is empty, so this is a wrong shape and a misleading error, not memory corruption.
+upstream: not searched
