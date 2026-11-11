@@ -99,3 +99,23 @@ def run(f):
         if "Maximum allowed size" in str(e) or "too large" in str(e) or "too big" in str(e):
             return "ERR alloc"
         return "ERR value"
+
+
+def big_width(rng, kind):
+    """A width that fails in every kind without a large allocation: above the dtype limit for S and U, above any real memory for T."""
+    if kind == "T":
+        return rng.choice([2**58, 2**60, 2**61, 2**62, 2**63 - 1])
+    return rng.choice([2**31, 2**32, 2**40, 2**62, 2**63 - 1])
+
+
+def rand_width(rng, kind):
+    r = rng.random()
+    if r < 0.8:
+        return rng.randrange(-3, 14)
+    if r < 0.9:
+        return big_width(rng, kind)
+    return rng.choice([INT64_MIN, -(2**31), 0, 1, 2])
+
+
+def fmt_res(kind, a):
+    return "OK " + fmt(out_codes(kind, a))
