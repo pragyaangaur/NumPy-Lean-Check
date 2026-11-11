@@ -16,6 +16,7 @@ def bErrStr : BErr → String
   | .opNdim => "ERR opndim"
   | .iterBcast => "ERR iterbcast"
   | .iterTooLarge => "ERR iterlarge"
+  | .legacyDims => "ERR legacydims"
 
 def rErrStr : RErr → String
   | .copy => "ERR copy"
