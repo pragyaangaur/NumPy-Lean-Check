@@ -15,7 +15,7 @@ namespace NumpyLean.LibInt
 def pyRangeLen (a b s : Int) : Int := max 0 (-((a - b).fdiv s))
 
 /-- PROP libint.arange.length_matches_range : REFUTED
-Source: the `numpy.arange` docstring, "For integer arguments the function is roughly equivalent to the Python built-in range", and the `stop` parameter, which may be included only "in some cases where `step` is not an integer". The length is the ceiling of a double (`ctors.c:3213` and `3268`), so `np.arange(0, 2**53 + 1, 2**53)` has one element where `range` has two. -/
+Source: the `numpy.arange` docstring, "For integer arguments the function is roughly equivalent to the Python built-in range", and the `stop` parameter, which may be included only "in some cases where `step` is not an integer". The length is the ceiling of a double (`ctors.c:3213` and `3268`), so `np.arange(0, 2**53 + 1, 2**53)` has one element where `range` has two. NumPy shows the same. The Warnings section of the docstring says "The length of the output might not be numerically stable" without restricting it to floating point arguments, so this is recorded without a bug record. -/
 theorem arange_length_matches_range_refuted :
     ¬ (∀ a b s o, s ≠ 0 → arangeObj a b (some s) none = .ok o → o.length = pyRangeLen a b s) := by
   intro h
