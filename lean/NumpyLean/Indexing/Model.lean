@@ -345,15 +345,15 @@ inductive DiagErr where
   deriving Repr, DecidableEq
 
 /--
-`PyArray_Diagonal` at `item_selection.c:2321` for a C-contiguous 2-D array of shape `(r, c)`, `axis1 = 0` and `axis2 = 1`. The result is `(size, start, step)` of the view in elements. When the size is negative it becomes zero and the data pointer is not moved, but a size of exactly zero still moves it. `offset` is a C `int`. The negation `offset = -offset` overflows for `INT_MIN`, but the build computes `dim1 -= offset` in 64 bits as if it had not, so the model uses the mathematical value.
+`PyArray_Diagonal` at `item_selection.c:2321` for a 2-D array of shape `(r, c)` with row stride `s1` and column stride `1` in elements, `axis1 = 0` and `axis2 = 1`. The result is `(size, start, step)` of the view in elements. When the size is negative it becomes zero and the data pointer is not moved, but a size of exactly zero still moves it. `offset` is a C `int`. The negation `offset = -offset` overflows for `INT_MIN`, but the build computes `dim1 -= offset` in 64 bits as if it had not, so the model uses the mathematical value.
 -/
-def diagonal2 (r c offset : Int) : Except DiagErr (Int × Int × Int) :=
+def diagonal2 (r c s1 offset : Int) : Except DiagErr (Int × Int × Int) :=
   if offset < -(2 : Int) ^ 31 ∨ offset ≥ (2 : Int) ^ 31 then .error .offsetOverflow
   else
     let (dim1, dim2, off, offStride) :=
-      if offset ≥ 0 then (r, c - offset, offset, 1) else (r + offset, c, -offset, c)
+      if offset ≥ 0 then (r, c - offset, offset, 1) else (r + offset, c, -offset, s1)
     let size := if dim2 < dim1 then dim2 else dim1
-    if size < 0 then .ok (0, 0, c + 1) else .ok (size, off * offStride, c + 1)
+    if size < 0 then .ok (0, 0, s1 + 1) else .ok (size, off * offStride, s1 + 1)
 
 /-! ## searchsorted -/
 
