@@ -93,6 +93,7 @@ def fmtReadError : ReadError → String
   | .unhashable => "ERR unhashable"
   | .notDict => "ERR notdict"
   | .keys => "ERR keys"
+  | .keySort => "ERR keysort"
   | .shape => "ERR shape"
   | .fortran => "ERR fortran"
   | .descr => "ERR descr"
