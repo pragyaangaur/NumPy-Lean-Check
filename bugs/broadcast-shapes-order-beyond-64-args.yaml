@@ -1,0 +1,11 @@
+id: broadcast-shapes-order-beyond-64-args
+title: broadcast_shapes with more than 64 arguments depends on the order of the arguments
+area: Broadcast
+kind: wrong-error
+severity: medium
+numpy_version: 2.5.4
+source: lib/_stride_tricks_impl.py:532
+property: NumpyLean.Broadcast.broadcastShapes_order_refuted
+summary: >
+  `np.broadcast_shapes((2**61,), *[()] * 64)` raises "array is too big; `arr.size * arr.dtype.itemsize` is larger than the maximum possible size", but `np.broadcast_shapes(*[()] * 64, (2**61,))` returns `(2305843009213693952,)`, and so does `np.broadcast_shapes((2**61,))`. Broadcasting is commutative and the docstring promises to "Broadcast the input shapes into a single shape", with no limit on the size of the shapes. `broadcast_shapes` builds its arrays with the 0-byte dtype `np.dtype([])` (lib/_stride_tricks_impl.py:580) so that no size limit applies to them. Above 64 arguments, `_broadcast_shape` carries the shape of the first 64 arguments into the next chunk with `b = broadcast_to(0, b.shape)` (lib/_stride_tricks_impl.py:532). That builds a view of an 8-byte int64 scalar, and the view must pass the size check of `PyArray_NewFromDescr_int` (_core/src/multiarray/ctors.c:748), so any shape of the first 64 arguments with more than 2**60 elements raises, while the same shape in a later chunk passes. Using the 0-byte dtype in the chunk step, for example `broadcast_to(np.empty((), dtype=_size0_dtype), b.shape)`, would make the result independent of the order.
+upstream: not searched
