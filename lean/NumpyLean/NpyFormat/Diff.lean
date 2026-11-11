@@ -118,7 +118,20 @@ def diffOpen : Handler
     | .error e => fmtReadError e
   | _ => "BADARGS"
 
+/-- `npy_array <fortran 0|1> <shape>` runs `read_array` on a file whose header declares that shape and the descriptor `|V0`. It prints `OK <shape>` or `ERR neg`, `ERR overflow`, `ERR maxdim`, `ERR multiple`, `ERR mismatch`, `ERR float`. -/
+def diffArray : Handler
+  | [f, shape] =>
+    match readArrayShape (parseInts shape) (f == "1") with
+    | .ok r => s!"OK {fmtInts r}"
+    | .error .negative => "ERR neg"
+    | .error .overflow => "ERR overflow"
+    | .error .maxDim => "ERR maxdim"
+    | .error .multiple => "ERR multiple"
+    | .error .mismatch => "ERR mismatch"
+    | .error .floatPath => "ERR float"
+  | _ => "BADARGS"
+
 def handlers : List (String × Handler) :=
-  [("npy_wrap", diffWrap), ("npy_write", diffWrite), ("npy_read", diffRead), ("npy_open", diffOpen)]
+  [("npy_array", diffArray), ("npy_wrap", diffWrap), ("npy_write", diffWrite), ("npy_read", diffRead), ("npy_open", diffOpen)]
 
 end NumpyLean.NpyFormat
