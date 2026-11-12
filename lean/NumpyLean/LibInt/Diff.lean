@@ -116,9 +116,26 @@ def diffBincount : Handler
     | .error .tooBig => "ERR toobig"
   | _ => "BADARGS"
 
+/-- `unique <data>` prints `OK <values> <first indices> <inverse> <counts>` for the integer array `data`. -/
+def diffUnique : Handler
+  | [d] =>
+    let r := unique1d (parseInts d)
+    s!"OK {fmtInts r.values} {fmtInts (r.index.map Int.ofNat)} {fmtInts (r.inverse.map Int.ofNat)} {fmtInts (r.counts.map Int.ofNat)}"
+  | _ => "BADARGS"
+
+/-- `filldiag <shape> <wrap>` prints `OK <flat indices>` or an error. The shape of a 1-d or 0-d array is `_` for 0-d. -/
+def diffFillDiag : Handler
+  | [shape, wrap] =>
+    match fillDiagonal ((parseInts shape).map Int.toNat) (wrap == "1") with
+    | .ok l => s!"OK {fmtInts (l.map Int.ofNat)}"
+    | .error .tooFewDims => "ERR ndim"
+    | .error .unequalDims => "ERR dims"
+  | _ => "BADARGS"
+
 def handlers : List (String × Handler) :=
   [("arange", diffArange), ("binrepr", diffBinaryRepr), ("baserepr", diffBaseRepr),
    ("pack", diffPack), ("unpack", diffUnpack), ("isin", diffIsin),
-   ("digitize", diffDigitize), ("bincount", diffBincount)]
+   ("digitize", diffDigitize), ("bincount", diffBincount),
+   ("unique", diffUnique), ("filldiag", diffFillDiag)]
 
 end NumpyLean.LibInt
