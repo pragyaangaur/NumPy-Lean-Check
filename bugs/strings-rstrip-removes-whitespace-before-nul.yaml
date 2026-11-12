@@ -8,4 +8,4 @@ source: _core/src/umath/string_buffer.h:1203
 property: NumpyLean.Strings.rstrip_U_nul_in_whitespace
 summary: >
   The right-hand loop of `string_lrstrip_whitespace` continues while a character is whitespace or, for `S` and `U`, NUL (`*traverse_buf != 0`). The trailing NULs are already cut off by `num_codepoints`, so this only matters for a NUL inside the string: whitespace on both sides of it is removed, and the text before the NUL loses its trailing whitespace. For "a \x00\n", `str.rstrip` gives "a \x00", which an `S` or `U` array reads as "a ", `np.strings.rstrip` gives "a", and `StringDType` gives "a \x00". The documentation says only that trailing NULs are dropped on read, and NUL is not whitespace for `str.isspace`, so the result differs between kinds and from Python.
-upstream: not searched
+upstream: NEW, searched open and closed issues and pull requests on 12 Nov 2026, closest is https://github.com/numpy/numpy/pull/31665 (merged, embedded NUL handling for StringDType only), main keeps the NUL test for S and U
