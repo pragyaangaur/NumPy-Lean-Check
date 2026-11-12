@@ -40,7 +40,7 @@ inductive SErr where
   | tooLong
   /-- `ValueError: slice step cannot be zero` (`string_ufuncs.cpp:688`). -/
   | stepZero
-  /-- `TypeError: data type 'U<width>' not understood`. The Python wrapper builds the output dtype `S<width>` or `U<width>` before calling the ufunc, and `np.dtype` refuses an item size above `INT_MAX` (`strings.py:754`). -/
+  /-- `TypeError: data type 'U<width>' not understood`. The Python wrapper builds the output dtype `S<width>` or `U<width>` before calling the ufunc, and `np.dtype` refuses an item size above `INT_MAX` (`strings.py:753`). -/
   | dtype
   /-- `OverflowError: Overflow encountered in _center` or `in zfill` from the `StringDType` loops (`stringdtype_ufuncs.cpp:1795`, `:1920`). -/
   | overflow
@@ -99,7 +99,7 @@ structure Prep where
   table : Array Nat
 
 /--
-`preprocess`. The test for a periodic needle is `memcmp(needle, needle + period, cut)` (`string_fastsearch.h:639`). C's `memcmp` counts bytes and `cut` is a count of characters, so for `char_type = npy_ucs4` only the first `cut` bytes are compared, which is the first `cut / 4` characters and the low `cut % 4` bytes of the next one on a little-endian machine (arm64 and x86-64). `bytes` is 4 for `U` and 1 for `S` and for the UTF-8 loops of `StringDType`. The memcmp is the line that differs from CPython's `stringlib/fastsearch.h`, which multiplies by `STRINGLIB_SIZEOF_CHAR`.
+`preprocess`. The test for a periodic needle is `memcmp(needle, needle + period, cut)` (`string_fastsearch.h:673`). C's `memcmp` counts bytes and `cut` is a count of characters, so for `char_type = npy_ucs4` only the first `cut` bytes are compared, which is the first `cut / 4` characters and the low `cut % 4` bytes of the next one on a little-endian machine (arm64 and x86-64). `bytes` is 4 for `U` and 1 for `S` and for the UTF-8 loops of `StringDType`. The memcmp is the line that differs from CPython's `stringlib/fastsearch.h`, which multiplies by `STRINGLIB_SIZEOF_CHAR`.
 -/
 def preprocess (nd : Array Int) (m : Nat) (bytes : Nat) : Prep :=
   let (cut, per) := factorize nd m
@@ -459,7 +459,7 @@ inductive Strip where
   | both
   deriving DecidableEq, Repr
 
-/-- The stripping loops of `string_lrstrip_whitespace` and `string_lrstrip_chars` (`string_buffer.h:1166`, `:1230`). `inLeft` and `inRight` say whether a character is removed from the left or from the right. The right-hand test of the whitespace version for `S` and `U` also removes NUL (`string_buffer.h:1202`), which the chars version and the `StringDType` version do not. -/
+/-- The stripping loops of `string_lrstrip_whitespace` and `string_lrstrip_chars` (`string_buffer.h:1166`, `:1230`). `inLeft` and `inRight` say whether a character is removed from the left or from the right. The right-hand test of the whitespace version for `S` and `U` also removes NUL (`string_buffer.h:1203`), which the chars version and the `StringDType` version do not. -/
 def stripCore (mode : Strip) (inLeft inRight : Int → Bool) (a : Str) : Str :=
   let start := if mode == .right then 0 else (a.takeWhile inLeft).length
   let rest := a.drop start
