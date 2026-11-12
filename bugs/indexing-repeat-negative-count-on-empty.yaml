@@ -8,4 +8,4 @@ source: _core/src/multiarray/item_selection.c:939
 property: NumpyLean.Indexing.repeat_negative_refuted
 summary: >
   `PyArray_Repeat` checks for negative counts with "repeats may not contain negative values." only in the loop for counts that do not broadcast (item_selection.c:942-949). A single broadcast count goes to `total = counts[0] * n` at item_selection.c:939 with no check, so for a non-empty axis the error comes from the array constructor as "negative dimensions are not allowed", and for an empty axis there is no error at all. `np.repeat(np.arange(0), -5)` returns an empty array, while `np.repeat(np.arange(2), [-5, 1])` raises. The documentation describes `repeats` as "The number of repetitions for each element", and a negative number of repetitions is invalid whether or not there are elements.
-upstream: not searched
+upstream: NEW, searched open and closed issues and PRs on 12 Nov 2026, main is unchanged, closest is https://github.com/numpy/numpy/issues/33080 (overflow of the same total computation, and its open fix pull/33084 does not add a negative check)
