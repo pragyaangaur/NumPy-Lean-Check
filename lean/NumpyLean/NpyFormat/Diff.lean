@@ -146,7 +146,15 @@ def diffFromBuffer : Handler
     | .error .tooBig => "ERR toobig"
   | _ => "BADARGS"
 
+/-- `loadtxt_int <code> <hex of utf8 text>` prints `OK <value>` or `ERR`. -/
+def diffLoadtxtInt : Handler
+  | [code, hex] =>
+    match loadtxtIntTyped code (textOfHex hex).toList with
+    | some v => s!"OK {v}"
+    | none => "ERR"
+  | _ => "BADARGS"
+
 def handlers : List (String × Handler) :=
-  [("frombuffer", diffFromBuffer), ("npy_array", diffArray), ("npy_wrap", diffWrap), ("npy_write", diffWrite), ("npy_read", diffRead), ("npy_open", diffOpen)]
+  [("loadtxt_int", diffLoadtxtInt), ("frombuffer", diffFromBuffer), ("npy_array", diffArray), ("npy_wrap", diffWrap), ("npy_write", diffWrite), ("npy_read", diffRead), ("npy_open", diffOpen)]
 
 end NumpyLean.NpyFormat
