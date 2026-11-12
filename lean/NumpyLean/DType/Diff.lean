@@ -82,8 +82,25 @@ def diffPyIntOp : Handler
     | _, _ => "BADARGS"
   | _ => "BADARGS"
 
+/-- `bigint_float <dtype> <int>` prints `OK <dtype> <fin|inf> <RuntimeWarning|none>` for the value of a Python int of any size stored in a floating point or complex dtype, or `ERR overflow` for `OverflowError`. The three paths of the test, `dtype.type(1) + v`, `np.ones(1, dtype) + v` and `np.asarray(v, dtype)`, run `pyIntScalarConv`, `pyIntToFloat` and `pyIntToFloat`, and the line only prints when the scalar and array models agree, or prints `DIFFER <array> <scalar>`. -/
+def diffBigIntFloat : Handler
+  | [a, v] =>
+    match parseDescr a, v.toInt? with
+    | some d, some x =>
+      let fmtConv (c : Option PyIntConv) : String :=
+        match c with
+        | none => "BADARGS"
+        | some .overflowError => "ERR overflow"
+        | some (.ok inf warns) =>
+          s!"OK {fmtDescr d} {if inf then "inf" else "fin"} {if warns then "RuntimeWarning" else "none"}"
+      let arr := fmtConv (pyIntToFloat d.num x)
+      let sca := fmtConv (pyIntScalarConv d.num x)
+      if arr == sca then arr else s!"DIFFER {arr} {sca}"
+    | _, _ => "BADARGS"
+  | _ => "BADARGS"
+
 def handlers : List (String × Handler) :=
   [("can_cast", diffCanCast), ("promote", diffPromote), ("result_type", diffResultType),
-   ("pyint_op", diffPyIntOp)]
+   ("pyint_op", diffPyIntOp), ("bigint_float", diffBigIntFloat)]
 
 end NumpyLean.DType
