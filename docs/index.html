@@ -89,7 +89,7 @@ footer { margin-top: 3em; padding-top: 1em; border-top: 1px solid var(--rule); c
 <p>I did not report the bugs one by one. Instead, I wrote a short post in my own words and opened <a href="https://github.com/numpy/numpy/issues/33299" data-hovercard-type="issue" data-hovercard-url="/numpy/numpy/issues/33299/hovercard">numpy/numpy#33299</a> to ask the maintainers whether they want the findings at all. If they do, I will file each one myself in my own words.</p>
 <h2>What it does not show</h2>
 <p>A proof is only as good as the copy it is about. The race in step 3 is strong evidence that the Lean copy matches NumPy, but it is not a proof that it matches. Every bug is therefore also confirmed by running real NumPy, and that check is the one I trust. The model covers a small part of the library, and it says nothing about floating point maths, linear algebra or anything else I left out. "New" means my searches found no earlier report, and GitHub's search is weak, so some of the 26 may turn out to be known.</p>
-<p>The whole project took two days on a 16 GB laptop. The code, the proofs, the 55 bug records and a script that reruns every reproducer are in the <a href="https://github.com/pragyaangaur/NumPy-Lean-Check">repository</a>.</p>
+<p>The whole project took one day on a laptop. The code, the proofs, the 55 bug records and a script that reruns every reproducer are in the <a href="https://github.com/pragyaangaur/NumPy-Lean-Check">repository</a>.</p>
 <footer>Written by <a href="https://pragyaangaur.dev/">Pragyaan Gaur</a>. The code, the proofs and every bug record are in the <a href="https://github.com/pragyaangaur/NumPy-Lean-Check">NumPy-Lean-Check repository</a>.</footer>
 </main>
 </body>
