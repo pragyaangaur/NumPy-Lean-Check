@@ -275,4 +275,115 @@ theorem bincount_in_bounds_refuted :
   have := h [intpMax] 0 64 0 [] (by decide +kernel) intpMax (by simp)
   exact absurd this (by decide +kernel)
 
+/-! ## unique -/
+
+/-- All lists of length `n` over the given values. -/
+def listsOver (vals : List Int) : Nat → List (List Int)
+  | 0 => [[]]
+  | n + 1 => (listsOver vals n).flatMap fun l => vals.map fun v => l ++ [v]
+
+/-- `uniqueSpecOk` checks the documented contract of `np.unique` with `return_index`, `return_inverse` and `return_counts` for one array: the values are the sorted distinct values (agreement with the plain model `uniqueSorted`), `index` holds the first occurrence of each, `counts` holds the number of occurrences, and the inverse rebuilds the array. -/
+def uniqueSpecOk (ar : List Int) : Bool :=
+  let r := unique1d ar
+  r.values == uniqueSorted ar && r.index.length == r.values.length && r.counts.length == r.values.length &&
+  (List.range r.values.length).all (fun j =>
+    r.index.getD j 0 == ar.idxOf (r.values.getD j 0) && r.counts.getD j 0 == ar.count (r.values.getD j 0)) &&
+  r.inverse.length == ar.length &&
+  (List.range ar.length).all fun i => r.values.getD (r.inverse.getD i 0) 0 == ar.getD i 0
+
+/-- PROP libint.unique.contract_small : PROVEN
+Source: the `numpy.unique` docstring for `return_index` ("the indices of the first occurrences of the unique values"), `return_inverse` ("the indices to reconstruct the original array from the unique array") and `return_counts`, and the sorted output. Checked on every integer array of up to six elements over the values -1 to 2, 5,461 arrays. The universe is too large for `decide`, so this uses `native_decide`, which trusts the compiler. -/
+theorem unique_contract_small :
+    ((List.range 7).all fun n => (listsOver [-1, 0, 1, 2] n).all uniqueSpecOk) = true := by
+  native_decide
+
+/-- PROP libint.unique.counts_sum_to_size : PROVEN
+Source: the `numpy.unique` docstring example that rebuilds the sorted array with `np.repeat(values, counts)`. The counts add up to the size of the array and `repeat` of the values by the counts is the sorted array. Checked on the same 5,461 arrays as `unique_contract_small`, with `native_decide`, which trusts the compiler. -/
+theorem unique_counts_sum_to_size :
+    ((List.range 7).all fun n => (listsOver [-1, 0, 1, 2] n).all fun ar =>
+      let r := unique1d ar
+      r.counts.foldl (· + ·) 0 == ar.length &&
+      (r.values.zip r.counts).flatMap (fun (v, c) => List.replicate c v) == ar.mergeSort (· ≤ ·)) = true := by
+  native_decide
+
+/-! ## fill_diagonal -/
+
+/-- PROP libint.fill_diagonal.two_d_main_diagonal : PROVEN
+Source: the `numpy.fill_diagonal` docstring, "Fill the main diagonal of the given array of any dimensionality", with `wrap=False` by default. For every 2-d shape with lengths 0 to 7 the flat indices written are those of `a[i, i]` for `i < min(rows, cols)`, which is `i * (cols + 1)`. Checked with `native_decide`, which trusts the compiler. -/
+theorem fill_diagonal_two_d_main_diagonal :
+    ((List.range 8).all fun r => (List.range 8).all fun c =>
+      fillDiagonal [r, c] false == .ok ((List.range (min r c)).map fun i => i * (c + 1))) = true := by
+  native_decide
+
+/-- PROP libint.fill_diagonal.wrap_only_matters_for_tall : PROVEN
+Source: the `wrap` parameter of the `numpy.fill_diagonal` docstring, "For tall matrices in NumPy version up to 1.6.2, the diagonal 'wrapped' after N columns". For 2-d shapes that are not tall, `wrap=True` writes the same cells as `wrap=False`. Checked for every shape with lengths 0 to 7 and rows at most columns, with `native_decide`. -/
+theorem fill_diagonal_wrap_only_matters_for_tall :
+    ((List.range 8).all fun r => (List.range 8).all fun c =>
+      r > c || fillDiagonal [r, c] true == fillDiagonal [r, c] false) = true := by
+  native_decide
+
+/-- PROP libint.fill_diagonal.n_d_main_diagonal : PROVEN
+Source: the `numpy.fill_diagonal` docstring, "For an array `a` with `a.ndim >= 2`, the diagonal is the list of locations with indices `a[i, i, ..., i]`". For every cube `(n, ..., n)` with `n` in 0 to 5 and 3 to 5 dimensions, the flat indices written are `i * (1 + n + ... + n^(d-1))`, those of `a[i, ..., i]`. Checked with `native_decide`. -/
+theorem fill_diagonal_n_d_main_diagonal :
+    ((List.range 6).all fun n => (List.range 3).all fun k =>
+      let d := k + 3
+      fillDiagonal (List.replicate d n) false ==
+        .ok ((List.range n).map fun i => i * (((List.range d).map fun e => n ^ e).foldl (· + ·) 0))) = true := by
+  native_decide
+
+/-- PROP libint.fill_diagonal.wrap_stays_on_diagonal : REFUTED
+Source: the `numpy.fill_diagonal` docstring, which says the diagonal of `a[i, i, ..., i]` is filled, and then shows with `wrap=True` on a 7 by 3 array that the diagonal "wraps" after 3 columns and starts again two rows down. So for a tall matrix the cells written are not all of the form `a[i, i]`. The 7 by 3 shape writes flat index 12, which is `a[4, 0]`. NumPy shows the same, and the documentation describes it, so this is recorded without a bug record. -/
+theorem fill_diagonal_wrap_off_diagonal_refuted :
+    ¬ (∀ r c l, fillDiagonal [r, c] true = .ok l → ∀ k ∈ l, k % c = k / c) := by
+  intro h
+  have := h 7 3 ((List.range 6).map fun i => i * 4) (by decide +kernel) 12 (by decide +kernel)
+  exact absurd this (by decide +kernel)
+
+/-! ## histogram -/
+
+/-- `histOk` runs the model of `histogram` and compares the counts with the exact integer model, for integer edges whose width is a multiple of the number of bins. -/
+def histOk (data : List Int) (first last : Int) (n : Nat) : Bool :=
+  match histEdges data n (some (first, last)) with
+  | .ok (f, l, edges) =>
+    match histCounts data (some (first, last)) n f l edges with
+    | .ok cs => cs == histExact data first last n
+    | .error _ => false
+  | .error _ => false
+
+/-- PROP libint.histogram.exact_counts_small : PROVEN
+Source: the `numpy.histogram` docstring, "All but the last (righthand-most) bin is half-open", with `bins` an integer giving equal-width bins over `range`. For ranges with lengths from 1 to 12 that are a multiple of `bins` and start at -3, 0 or 5, with 1 to 4 bins, and every pair of data values from one below the range to one above it, the counts of the model equal those of an exact integer model. Checked with `native_decide`, which trusts the compiler, because `Float` is not evaluated by the kernel. -/
+theorem histogram_exact_counts_small :
+    ([(-3 : Int), 0, 5].all fun lo => (List.range 4).all fun b => (List.range 4).all fun k =>
+      let n := b + 1
+      let w : Int := (n * (k + 1) : Nat)
+      ((List.range ((w + 3).toNat)).all fun i => ((List.range ((w + 3).toNat)).all fun j =>
+        histOk [lo - 1 + i, lo - 1 + j] lo (lo + w) n))) = true := by
+  native_decide
+
+/-- PROP libint.histogram.exact_counts_int64 : REFUTED
+Source: the `numpy.histogram` docstring, the same bins as above, with no condition on the size of integer data. The value `2**61 - 1` is below the middle edge `2**61` of the range from 0 to `2**62` in two bins, but the loop converts the data to `float64` (`_histograms_impl.py:847`), which rounds it up to `2**61`, so the correction step at `:858` finds it on the edge and keeps it in the upper bin. NumPy gives the counts `[0, 1]` for it. The documentation does not mention a limit on the size of the data. Checked with `native_decide`, which trusts the compiler. -/
+theorem histogram_exact_counts_int64_refuted :
+    ¬ (∀ data first last n, first < last → histOk data first last n = true) := by
+  intro h
+  exact absurd (h [2 ^ 61 - 1] 0 (2 ^ 62) 2 (by decide)) (by native_decide)
+
+/-- True when `histogram_bin_edges` with the range `(lo, hi)` returns edges in the model. -/
+def histEdgesOk (data : List Int) (n lo hi : Int) : Bool :=
+  match histEdges data n (some (lo, hi)) with
+  | .ok _ => true
+  | .error _ => false
+
+/-- True when `histogram` with the range `(lo, hi)` returns counts in the model. -/
+def histCallOk (data : List Int) (n lo hi : Int) : Bool :=
+  match histEdges data n (some (lo, hi)) with
+  | .ok (f, l, edges) => (histCounts data (some (lo, hi)) n.toNat f l edges).toBool
+  | .error _ => false
+
+/-- PROP libint.histogram.succeeds_when_edges_do : REFUTED
+Source: the `numpy.histogram` and `numpy.histogram_bin_edges` docstrings, which describe the same `bins` and `range` parameters, so a call that gives edges should also give counts. For `uint64` data and the range 0 to `2**64 - 1`, `histogram_bin_edges` returns the edges, but `histogram` raises `OverflowError` in `_unsigned_subtract` (`_histograms_impl.py:352`), which converts the Python ints of the range to `int64`. Checked with `native_decide`, which trusts the compiler. -/
+theorem histogram_succeeds_when_edges_do_refuted :
+    ¬ (∀ data n lo hi, histEdgesOk data n lo hi = true → histCallOk data n lo hi = true) := by
+  intro h
+  exact absurd (h [1] 2 0 (2 ^ 64 - 1) (by native_decide)) (by native_decide)
+
 end NumpyLean.LibInt
