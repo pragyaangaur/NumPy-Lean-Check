@@ -8,4 +8,4 @@ source: _core/src/multiarray/shape.c:703
 property: NumpyLean.Broadcast.transpose_only_permutations_refuted
 summary: >
   `np.transpose(np.zeros((2, 3)), (2**32, 1))` returns the array of shape (2, 3) unchanged, and `np.zeros((2, 3)).transpose(2**32 + 1, 2**33)` returns shape (3, 2). The docstring of numpy.transpose says the axes "must be a tuple or list which contains a permutation of [0, 1, ..., N-1]", and an axis of 2**32 on a 2-d array should raise AxisError like `np.transpose(np.zeros((2, 3)), (2, 1))` does. `PyArray_Transpose` reads the axes as `npy_intp` through `PyArray_IntpConverter`, then does `int axis = axes[i]` (_core/src/multiarray/shape.c:703), which keeps the low 32 bits, and only then calls `check_and_adjust_axis`. So every axis is taken modulo 2**32 before the range check. Other axis arguments reject such values: `np.moveaxis`, `np.swapaxes`, `np.squeeze` and `np.sum` raise OverflowError or ValueError for an axis of 2**32.
-upstream: not searched
+upstream: NEW, searched open and closed issues and PRs on 12 Nov 2026, no issue or PR mentions the int axis truncation in PyArray_Transpose, main still has int axis = axes[i] in shape.c
