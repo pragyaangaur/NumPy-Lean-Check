@@ -1,0 +1,11 @@
+id: broadcast-pad-scalar-width-wraps
+title: pad with a huge scalar or pair width wraps the new shape and gives a misleading error
+area: Broadcast
+kind: wrong-error
+severity: low
+numpy_version: 2.5.4
+source: lib/_arraypad_impl.py:111
+property: NumpyLean.Broadcast.pad_large_width_refuted
+summary: >
+  `np.pad(np.zeros((4, 4)), 2**63 - 1)` raises `ValueError: could not broadcast input array from shape (4,4) into shape (0,0)`, and `np.pad(np.zeros(1), 2**63 - 1)` raises `ValueError: negative dimensions are not allowed`. The same widths written as `[[2**63-1, 2**63-1], [2**63-1, 2**63-1]]` raise `ValueError: Maximum allowed dimension exceeded`, which is the right message. For a scalar width, and for one pair, `_as_pairs` returns `x[0]` and `x[1]` (lib/_arraypad_impl.py:519 and 529), which are `np.intp` scalars, so `left + size + right` in `_pad_simple` (line 111) wraps around in 64 bits with a RuntimeWarning, while the nested form goes through `tolist()` and gives Python integers. The call always fails with `ValueError`, so the result is never silently wrong. Only the message hides the cause, and for sums that wrap to a positive number the shape passed to `np.empty` is wrong.
+upstream: NEW, searched open and closed issues and PRs on 12 Nov 2026, no report of np.pad with huge widths or of the intp scalar arithmetic in _pad_simple, main still returns x[0] from _as_pairs and still computes left + size + right
