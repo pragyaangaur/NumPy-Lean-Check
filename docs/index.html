@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
 <title>I copied part of NumPy into a proof checker, and it found 55 bugs | Pragyaan Gaur</title>
 <meta name="description" content="I copied part of NumPy&#x27;s C code into the Lean 4 proof checker, raced it against the real library 7.5 million times and proved claims about it. It found 55 bugs, and 26 had never been reported.">
 <meta name="author" content="Pragyaan Gaur">
@@ -18,10 +19,9 @@
 @font-face { font-family: "Latin Modern"; font-weight: 400; font-display: swap; src: url("https://pragyaangaur.dev/assets/fonts/LM-regular.woff2") format("woff2"); }
 @font-face { font-family: "Latin Modern"; font-style: italic; font-weight: 400; font-display: swap; src: url("https://pragyaangaur.dev/assets/fonts/LM-italic.woff2") format("woff2"); }
 @font-face { font-family: "Latin Modern"; font-weight: 700; font-display: swap; src: url("https://pragyaangaur.dev/assets/fonts/LM-bold.woff2") format("woff2"); }
-:root { --bg: #fcfcfa; --ink: #1b1b1a; --muted: #5b5a56; --rule: #e2e0da; --code: #f2f1ec; --link: #1f5fbf; }
-@media (prefers-color-scheme: dark) { :root { --bg: #181817; --ink: #ecebe6; --muted: #b3b1a8; --rule: #33322f; --code: #242422; --link: #7fb0f5; } }
+:root { --bg: #fdfdfc; --ink: #111210; --muted: #4a4c46; --rule: #d9d9d3; --code: #f2f2ee; --link: #1f5fbf; color-scheme: light; }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 20px/1.6 "Latin Modern", Georgia, serif; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 20px/1.6 "Latin Modern", "CMU Serif", "Computer Modern", Georgia, serif; text-rendering: optimizeLegibility; font-kerning: normal; hyphens: auto; }
 main { max-width: 860px; margin: 0 auto; padding: 56px 22px 80px; }
 h1 { font-size: 2.05em; line-height: 1.2; margin: 0 0 12px; }
 h2 { font-size: 1.3em; margin: 2em 0 0.5em; }
@@ -61,11 +61,11 @@ footer { margin-top: 3em; padding-top: 1em; border-top: 1px solid var(--rule); c
 <li>Once the copy matches the library, ask it questions. The claims come from NumPy's own documentation and from comments in its source. A proof covers every possible input, which a test can never do.</li>
 <li>When a claim turns out to be false and the real NumPy shows the same failure, write it up as a bug with a short script that reproduces it.</li>
 </ol>
-<figure><picture><source media="(prefers-color-scheme: dark)" srcset="images/pipeline-dark.svg"><img src="images/pipeline-light.svg" alt="The five steps: read the C, mirror it in Lean, race the two, prove or refute, file the bug"></picture></figure>
+<figure><picture><img src="images/pipeline-light.svg" alt="The five steps: read the C, mirror it in Lean, race the two, prove or refute, file the bug"></picture></figure>
 <p>The <code class="notranslate">bincount</code> bug came out of step 4. The documentation promises that every input is a valid slot in the output. The C code computes the length as the largest input plus one, and for <code class="notranslate">2**63 - 1</code> that addition overflows to a negative number. A later step replaces the negative length with zero, and then the counting loop writes into an array of length zero. The Lean theorem that states "every input fits" is false, and Lean accepted the proof that it is false with that one input.</p>
 <h2>What it found</h2>
 <p>The 50 tests ran 7.5 million cases, and every case agreed with NumPy. Out of 208 claims, Lean proved 121 and refuted 87. Some refuted claims are behaviour that NumPy's documentation already warns about, and I did not count those. The rest became 55 bug records.</p>
-<figure><picture><source media="(prefers-color-scheme: dark)" srcset="images/findings-dark.svg"><img src="images/findings-light.svg" alt="The 55 bug records by area and by whether NumPy already knew about them"></picture></figure>
+<figure><picture><img src="images/findings-light.svg" alt="The 55 bug records by area and by whether NumPy already knew about them"></picture></figure>
 <p>Five of them are serious, meaning a memory error or a silently wrong answer on ordinary input:</p>
 <ul>
 <li><code class="notranslate">np.bincount([2**63 - 1])</code> writes outside its buffer, as above.</li>
