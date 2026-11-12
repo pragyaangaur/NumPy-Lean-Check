@@ -517,4 +517,73 @@ def bincount (l : List Int) (minlength : Int) (cap : Int) : Except BincountErr (
   zerosCheck size
   return (size, if size ≤ cap then (List.range size.toNat).map fun (i : Nat) => ((l.filter (· = (i : Int))).length : Int) else [])
 
+/-! ## unique -/
+
+/-- The four arrays that `_unique1d` computes for an integer array, with `return_index`, `return_inverse` and `return_counts` all set. -/
+structure UniqueOut where
+  values : List Int
+  index : List Nat
+  inverse : List Nat
+  counts : List Nat
+  deriving Repr, DecidableEq
+
+/-- `ar.argsort(kind='mergesort')`, which is a stable sort of the positions by value (`_arraysetops_impl.py:379`). With `return_inverse` alone NumPy uses `quicksort` there, which is not stable, but then only the values and the counts depend on the permutation and they do not depend on how ties are ordered. -/
+def argsortStable (ar : List Int) : List Nat :=
+  (List.range ar.length).mergeSort (fun i j => decide (ar.getD i 0 ≤ ar.getD j 0))
+
+/-- `x[mask]` for a list. -/
+def selMask {α : Type} (l : List α) (mask : List Bool) : List α :=
+  (l.zip mask).filterMap fun (x, m) => if m then some x else none
+
+/--
+`_unique1d` at `_arraysetops_impl.py:350-433` on the sort path, for an integer array, in the order of the source. `perm` sorts the array, `aux` is the sorted array, and `mask[k]` marks the first element of each run of equal values (`mask[:1] = True` and `mask[1:] = aux[1:] != aux[:-1]`). The values are `aux[mask]` and the first indices are `perm[mask]`. The inverse is `inv_idx[perm] = np.cumsum(mask) - 1`, and the counts are the differences of the positions of the marks followed by the size. The hash path that `unique_values` may take returns the same sorted values.
+-/
+def unique1d (ar : List Int) : UniqueOut :=
+  let perm := argsortStable ar
+  let aux := perm.map fun i => ar.getD i 0
+  let n := aux.length
+  let mask : List Bool := (List.range n).map fun k => k == 0 || aux.getD k 0 != aux.getD (k - 1) 0
+  let imask : List Nat := (List.range n).map fun k => ((mask.take (k + 1)).filter id).length - 1
+  let pos : List Nat := (List.range n).filter fun k => mask.getD k false
+  let idx := pos ++ [n]
+  { values := selMask aux mask
+    index := selMask perm mask
+    inverse := (List.range n).map fun i => imask.getD (perm.idxOf i) 0
+    counts := (idx.zip idx.tail).map fun (a, b) => b - a }
+
+/-! ## fill_diagonal -/
+
+inductive FillDiagErr where
+  /-- `ValueError` "array must be at least 2-d" at `_index_tricks_impl.py:906`. -/
+  | tooFewDims
+  /-- `ValueError` "All dimensions of input must be of equal length" at `_index_tricks_impl.py:919`. -/
+  | unequalDims
+  deriving Repr, DecidableEq
+
+/-- The sum of `np.cumprod(shape[:-1])`. -/
+def cumprodSum (shape : List Nat) : Nat :=
+  let pre := shape.dropLast
+  ((List.range pre.length).map fun k => ((pre.take (k + 1)).foldl (· * ·) 1)).foldl (· + ·) 0
+
+/-- True when `np.diff(shape)` is zero everywhere. -/
+def allEqual (shape : List Nat) : Bool :=
+  (shape.zip shape.tail).all fun (a, b) => a == b
+
+/--
+`fill_diagonal` at `_index_tricks_impl.py:905-923`. It returns the flat indices that `a.flat[:end:step] = val` writes, in order. For two dimensions `step` is `shape[1] + 1` and `end` is `shape[1] ** 2` unless `wrap` is set. For more dimensions all lengths must agree and `step = 1 + cumprod(shape[:-1]).sum()`. The slice stops at `min(end, size)`.
+-/
+def fillDiagonal (shape : List Nat) (wrap : Bool) : Except FillDiagErr (List Nat) :=
+  if shape.length < 2 then .error .tooFewDims
+  else
+    let size := shape.foldl (· * ·) 1
+    if shape.length == 2 then
+      let c := shape.getD 1 0
+      let step := c + 1
+      let stop := if wrap then size else min (c * c) size
+      .ok ((List.range ((stop + step - 1) / step)).map (· * step))
+    else if !allEqual shape then .error .unequalDims
+    else
+      let step := 1 + cumprodSum shape
+      .ok ((List.range ((size + step - 1) / step)).map (· * step))
+
 end NumpyLean.LibInt
