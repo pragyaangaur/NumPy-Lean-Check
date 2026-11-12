@@ -61,7 +61,21 @@ Other people are clearly working on the same code right now, and at least one of
 
 NumPy has a clear policy on AI. It asks contributors not to use AI to write issues or to speak for them, and it asks for disclosure. So it is worth being plain about how this was built. I designed the method and picked the scope. Claude Opus 5.5 and Sonnet 5.5 agents wrote the Lean models and the test scripts, three areas at a time, and I checked each area by rerunning its tests and reproducing its bugs before the next one started. The Lean proof checker does not trust any of that. Every proof and every refutation in the repository was checked by Lean's kernel, and every bug was reproduced on the real NumPy.
 
-I did not report the bugs one by one. Instead, I wrote a short post in my own words and opened [numpy/numpy#33299](https://github.com/numpy/numpy/issues/33299) to ask the maintainers whether they want the findings at all. If they do, I will file each one myself in my own words.
+I did not report the bugs one by one. Instead, I wrote a short post in my own words and opened [numpy/numpy#33299](https://github.com/numpy/numpy/issues/33299) to ask the maintainers whether they want the findings at all.
+
+## What happened next
+
+Matti Picus, one of NumPy's core maintainers, replied the same day. NumPy has almost 2,000 open issues and over 300 open pull requests, so a long list of findings in one issue is unlikely to get attention. He suggested short issues with pull requests instead, one for each bug, small and focused, checked by a person and written without long AI text. That advice made sense to me, so I followed it for the most serious new bug.
+
+I filed the `bincount` bug as its own issue, [numpy/numpy#33305](https://github.com/numpy/numpy/issues/33305), and sent a fix in [numpy/numpy#33306](https://github.com/numpy/numpy/pull/33306). The fix adds one check before the length is computed. When the largest input is the biggest possible 64-bit integer, `bincount` now raises a `ValueError` instead of writing outside its buffer, and a new test makes sure it stays that way. The pull request is waiting for review.
+
+I asked for #33299 to stay open so that other people can find the remaining 25 new bugs.
+
+## If you want to fix one
+
+You are welcome to take any of the bugs and send the fix to NumPy yourself, and you do not need to ask me first. The [findings table](https://github.com/pragyaangaur/NumPy-Lean-Check/blob/main/bugs/FINDINGS.md) lists every record with its upstream status, so start with one marked NEW. Each record in [`bugs/`](https://github.com/pragyaangaur/NumPy-Lean-Check/tree/main/bugs) names the C function and line it comes from, and each has a short script in `bugs/repro/` that shows the bug on a real NumPy install.
+
+Before you file anything, run the script against NumPy's main branch, because some bugs get fixed between releases. Then follow the maintainers' advice above: one bug per issue, a small pull request with a regression test, and a description you wrote yourself. Please read [NumPy's AI policy](https://numpy.org/devdocs/dev/ai_policy.html) too, since it asks you to disclose any AI use and to write issues and pull requests in your own words. It would help if you mention the record and link this repository, so that others do not pick the same bug.
 
 ## What it does not show
 
