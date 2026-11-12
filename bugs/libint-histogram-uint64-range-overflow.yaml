@@ -1,0 +1,11 @@
+id: libint-histogram-uint64-range-overflow
+title: histogram raises OverflowError for a range above 2**63 - 1 although histogram_bin_edges accepts it
+area: LibInt
+kind: wrong-error
+severity: low
+numpy_version: 2.5.4
+source: lib/_histograms_impl.py:352
+property: NumpyLean.LibInt.histogram_succeeds_when_edges_do_refuted
+summary: >
+  `np.histogram_bin_edges(a, bins=2, range=(0, 2**64 - 1))` for a `uint64` array returns the three edges, but `np.histogram` with the same arguments raises `OverflowError: Python int too large to convert to C long`. The edges are built by `linspace`, which accepts the Python ints. The counting loop then calls `_unsigned_subtract(last_edge, first_edge)` (`_histograms_impl.py:823`) with the two Python ints, which finds the common type of the two ints (`int64`) and converts both with `np.asarray(a, dtype=dt)` (`:352`), and a Python int of `2**63` or more does not fit. The range is valid for `uint64` data, and the docstring of `histogram` describes `range` as a pair of floats without a limit on the integer size, so the two functions that share the parameters should not differ. A range with equal ends is widened to floats first and does not fail.
+upstream: NEW, searched open and closed issues and pull requests for histogram with uint64, range and OverflowError on 12 Nov 2026 and found no report, and main still calls _unsigned_subtract(last_edge, first_edge) on the Python ints at the same place
