@@ -1,0 +1,11 @@
+id: dtype-bigint-float32-double-rounding
+title: A Python int just below the float32 limit becomes inf because it is rounded to a double first
+area: DType
+kind: wrong-result
+severity: low
+numpy_version: 2.5.4
+source: _core/src/multiarray/arraytypes.c.src:123
+property: NumpyLean.DType.pyint_to_float_float32_limit_refuted
+summary: >
+  `np.asarray(2**128 - 2**103 - 2**73, dtype=np.float32)` is `inf` with `RuntimeWarning: overflow encountered in cast`, and so are `np.float32(1) + v` and `np.ones(1, np.float32) + v`, and the same with `np.complex64`. The largest float32 is `2**128 - 2**104`, and the midpoint between it and `2**128` is `2**128 - 2**103`, so an exact conversion of this integer, which is below the midpoint, gives the largest float32 and no warning. `MyPyFloat_AsFloat` (arraytypes.c.src:123) first turns the int into a double with `PyNumber_Float` and then narrows it to float32. For integers within `2**74` below the midpoint the first rounding goes up to the double that equals the midpoint, and the second rounding then takes it to infinity. About `2**74` integers out of the `2**128` range are affected, and `np.float16` does not suffer from it because its limit is far below `2**53`. The result differs from the exact one for integers above `2**53` below that window too (they round twice), but only the overflow changes the class of the value, finite against infinite, with a warning, which is what the test checks.
+upstream: NEW, searched open and closed issues and pull requests on 12 Nov 2026, no issue describes the double rounding of Python ints to float32, closest is https://github.com/numpy/numpy/issues/22098 (open, longdouble(int) conversion goes through a decimal string, a different path), main has the same code
