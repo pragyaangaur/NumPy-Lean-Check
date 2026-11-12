@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 438" width="980" height="438" role="img" aria-label="Bug records by area, split by whether NumPy already knew about them">
+<rect width="980" height="438" rx="12" fill="#fcfcfb"/>
+<text x="24" y="32" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16" font-weight="700" fill="#0b0b0b">55 bug records by area, and whether NumPy already knew</text>
+<rect x="24" y="50" width="12" height="12" rx="3" fill="#2a78d6"/>
+<text x="42" y="60.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" fill="#52514e">New (26)</text>
+<rect x="110.8" y="50" width="12" height="12" rx="3" fill="#eb6834"/>
+<text x="128.8" y="60.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" fill="#52514e">Related (13)</text>
+<rect x="226.0" y="50" width="12" height="12" rx="3" fill="#1baf7a"/>
+<text x="244.0" y="60.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" fill="#52514e">Known, open (7)</text>
+<rect x="362.5" y="50" width="12" height="12" rx="3" fill="#eda100"/>
+<text x="380.5" y="60.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" fill="#52514e">Known, closed (2)</text>
+<rect x="513.2" y="50" width="12" height="12" rx="3" fill="#e87ba4"/>
+<text x="531.2" y="60.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" fill="#52514e">Fixed on main (7)</text>
+<line x1="120.0" y1="84" x2="120.0" y2="390" stroke="#e4e2dc" stroke-width="1"/>
+<text x="120.0" y="406" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#52514e">0</text>
+<line x1="280.0" y1="84" x2="280.0" y2="390" stroke="#e4e2dc" stroke-width="1"/>
+<text x="280.0" y="406" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#52514e">2</text>
+<line x1="440.0" y1="84" x2="440.0" y2="390" stroke="#e4e2dc" stroke-width="1"/>
+<text x="440.0" y="406" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#52514e">4</text>
+<line x1="600.0" y1="84" x2="600.0" y2="390" stroke="#e4e2dc" stroke-width="1"/>
+<text x="600.0" y="406" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#52514e">6</text>
+<line x1="760.0" y1="84" x2="760.0" y2="390" stroke="#e4e2dc" stroke-width="1"/>
+<text x="760.0" y="406" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#52514e">8</text>
+<line x1="920.0" y1="84" x2="920.0" y2="390" stroke="#e4e2dc" stroke-width="1"/>
+<text x="920.0" y="406" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#52514e">10</text>
+<text x="108" y="106.5" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#0b0b0b">Broadcast</text>
+<rect x="120" y="92" width="558.0" height="20" rx="4" fill="#2a78d6"><title>Broadcast: 7 new</title></rect>
+<text x="399.0" y="106.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#ffffff">7</text>
+<rect x="680.0" y="92" width="78.0" height="20" rx="4" fill="#eb6834"><title>Broadcast: 1 related</title></rect>
+<text x="719.0" y="106.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#ffffff">1</text>
+<rect x="760.0" y="92" width="158.0" height="20" rx="4" fill="#e87ba4"><title>Broadcast: 2 fixed on main</title></rect>
+<text x="839.0" y="106.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#0b0b0b">2</text>
+<text x="926.0" y="106.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#52514e">10</text>
+<text x="108" y="140.5" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#0b0b0b">Indexing</text>
+<rect x="120" y="126" width="318.0" height="20" rx="4" fill="#2a78d6"><title>Indexing: 4 new</title></rect>
+<text x="279.0" y="140.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#ffffff">4</text>
+<rect x="440.0" y="126" width="238.0" height="20" rx="4" fill="#eb6834"><title>Indexing: 3 related</title></rect>
+<text x="559.0" y="140.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#ffffff">3</text>
+<rect x="680.0" y="126" width="78.0" height="20" rx="4" fill="#1baf7a"><title>Indexing: 1 known, open</title></rect>
+<text x="719.0" y="140.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#0b0b0b">1</text>
+<rect x="760.0" y="126" width="78.0" height="20" rx="4" fill="#eda100"><title>Indexing: 1 known, closed</title></rect>
+<text x="799.0" y="140.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#0b0b0b">1</text>
+<rect x="840.0" y="126" width="78.0" height="20" rx="4" fill="#e87ba4"><title>Indexing: 1 fixed on main</title></rect>
+<text x="879.0" y="140.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#0b0b0b">1</text>
+<text x="926.0" y="140.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#52514e">10</text>
+<text x="108" y="174.5" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#0b0b0b">LibInt</text>
+<rect x="120" y="160" width="478.0" height="20" rx="4" fill="#2a78d6"><title>LibInt: 6 new</title></rect>
+<text x="359.0" y="174.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#ffffff">6</text>
+<rect x="600.0" y="160" width="238.0" height="20" rx="4" fill="#eb6834"><title>LibInt: 3 related</title></rect>
+<text x="719.0" y="174.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#ffffff">3</text>
+<rect x="840.0" y="160" width="78.0" height="20" rx="4" fill="#e87ba4"><title>LibInt: 1 fixed on main</title></rect>
+<text x="879.0" y="174.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#0b0b0b">1</text>
+<text x="926.0" y="174.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#52514e">10</text>
+<text x="108" y="208.5" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#0b0b0b">NpyFormat</text>
+<rect x="120" y="194" width="238.0" height="20" rx="4" fill="#2a78d6"><title>NpyFormat: 3 new</title></rect>
+<text x="239.0" y="208.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#ffffff">3</text>
+<rect x="360.0" y="194" width="158.0" height="20" rx="4" fill="#eb6834"><title>NpyFormat: 2 related</title></rect>
+<text x="439.0" y="208.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#ffffff">2</text>
+<rect x="520.0" y="194" width="158.0" height="20" rx="4" fill="#1baf7a"><title>NpyFormat: 2 known, open</title></rect>
+<text x="599.0" y="208.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#0b0b0b">2</text>
+<rect x="680.0" y="194" width="78.0" height="20" rx="4" fill="#e87ba4"><title>NpyFormat: 1 fixed on main</title></rect>
+<text x="719.0" y="208.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#0b0b0b">1</text>
+<text x="766.0" y="208.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#52514e">8</text>
+<text x="108" y="242.5" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#0b0b0b">Datetime</text>
+<rect x="120" y="228" width="238.0" height="20" rx="4" fill="#2a78d6"><title>Datetime: 3 new</title></rect>
+<text x="239.0" y="242.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#ffffff">3</text>
+<rect x="360.0" y="228" width="318.0" height="20" rx="4" fill="#1baf7a"><title>Datetime: 4 known, open</title></rect>
+<text x="519.0" y="242.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#0b0b0b">4</text>
+<text x="686.0" y="242.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#52514e">7</text>
+<text x="108" y="276.5" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#0b0b0b">DType</text>
+<rect x="120" y="262" width="78.0" height="20" rx="4" fill="#2a78d6"><title>DType: 1 new</title></rect>
+<text x="159.0" y="276.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#ffffff">1</text>
+<rect x="200.0" y="262" width="238.0" height="20" rx="4" fill="#eb6834"><title>DType: 3 related</title></rect>
+<text x="319.0" y="276.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#ffffff">3</text>
+<text x="446.0" y="276.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#52514e">4</text>
+<text x="108" y="310.5" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#0b0b0b">Strings</text>
+<rect x="120" y="296" width="158.0" height="20" rx="4" fill="#2a78d6"><title>Strings: 2 new</title></rect>
+<text x="199.0" y="310.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#ffffff">2</text>
+<rect x="280.0" y="296" width="158.0" height="20" rx="4" fill="#e87ba4"><title>Strings: 2 fixed on main</title></rect>
+<text x="359.0" y="310.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#0b0b0b">2</text>
+<text x="446.0" y="310.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#52514e">4</text>
+<text x="108" y="344.5" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#0b0b0b">IntArith</text>
+<rect x="120" y="330" width="78.0" height="20" rx="4" fill="#eb6834"><title>IntArith: 1 related</title></rect>
+<text x="159.0" y="344.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#ffffff">1</text>
+<text x="206.0" y="344.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#52514e">1</text>
+<text x="108" y="378.5" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#0b0b0b">Shape</text>
+<rect x="120" y="364" width="78.0" height="20" rx="4" fill="#eda100"><title>Shape: 1 known, closed</title></rect>
+<text x="159.0" y="378.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#0b0b0b">1</text>
+<text x="206.0" y="378.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#52514e">1</text>
+</svg>
