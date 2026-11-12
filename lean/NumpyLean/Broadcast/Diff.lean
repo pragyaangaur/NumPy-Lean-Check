@@ -81,8 +81,105 @@ def diffSqueeze : Handler
   | [shape, kind, axes] => fmtA (squeeze (parseInts shape) (kind == "t") (parseInts axes))
   | _ => "BADARGS"
 
+def sErrStr : SplitErr → String
+  | .index => "ERR index"
+  | .sections => "ERR sections"
+  | .notEqual => "ERR notequal"
+  | .zeroDiv => "ERR zerodiv"
+
+def iErrStr : IErr → String
+  | .axis => "ERR axis"
+  | .index => "ERR index"
+  | .value => "ERR value"
+  | .attr => "ERR attr"
+
+def pErrStr : PErr → String
+  | .type => "ERR type"
+  | .negative => "ERR negative"
+  | .broadcast => "ERR broadcast"
+  | .conv => "ERR conv"
+  | .tooBig => "ERR toobig"
+
+/-- A section argument is `c:<n>` for an integer or `l:<ints>` for a list of indices. -/
+def parseSections (s : String) : Sections :=
+  match s.splitOn ":" with
+  | ["c", n] => .count (parseInt n)
+  | ["l", l] => .idx (parseInts l)
+  | _ => .count 0
+
+def fmtShapes (l : List (List Int)) : String := ";".intercalate (l.map fmtInts)
+
+def diffSplitWith (f : List Int → Int → Sections → Except SplitErr (List (List Int))) : Handler
+  | [shape, axis, secs] =>
+    match f (parseInts shape) (parseInt axis) (parseSections secs) with
+    | .ok r => s!"OK {fmtShapes r}"
+    | .error e => sErrStr e
+  | _ => "BADARGS"
+
+/-- `asplit <shape> <axis> <sections>` prints the shape of every piece of `np.array_split`. -/
+def diffASplit : Handler := diffSplitWith arraySplit
+
+/-- `split <shape> <axis> <sections>` prints the shape of every piece of `np.split`. -/
+def diffNpSplit : Handler := diffSplitWith npSplit
+
+def parseOptInt (s : String) : Option Int := if s == "n" then none else some (parseInt s)
+
+def parseBits (s : String) : List Bool := if s == "_" then [] else s.toList.map (· == '1')
+
+/-- An `obj` argument is `i:<n>`, `s:<start>:<stop>:<step>` with `n` for `None`, `l:<ints>`, `m:<bits>` for a boolean array or `q:<bits>` for a Python list of booleans. -/
+def parseObj (s : String) : Obj :=
+  match s.splitOn ":" with
+  | ["i", n] => .int (parseInt n)
+  | ["s", a, b, c] => .slice (parseOptInt a) (parseOptInt b) (parseOptInt c)
+  | ["l", l] => .list (parseInts l)
+  | ["m", b] => .mask (parseBits b)
+  | ["q", b] => .boolList (parseBits b)
+  | _ => .list []
+
+/-- The array of `np.arange(size)` with shape `[]` or `[N]`, after the axis handling of `delete` and `insert`. An axis of `none` ravels a 0-d array to one element. -/
+def prepArray (shape : List Int) (axis : String) : Except IErr (List Int) :=
+  let size : Int := shape.foldl (· * ·) 1
+  let content := (List.range size.toNat).map Int.ofNat
+  if axis == "none" then .ok content
+  else
+    let a := parseInt axis
+    let nd : Int := shape.length
+    if a < -nd || a ≥ nd then .error .axis else .ok content
+
+/-- `delete <shape> <axis> <obj>` prints the elements left after `np.delete(np.arange(n), obj, axis)`. -/
+def diffDelete : Handler
+  | [shape, axis, obj] =>
+    match prepArray (parseInts shape) axis with
+    | .error e => iErrStr e
+    | .ok arr =>
+      match deleteObj arr (parseObj obj) with
+      | .ok r => s!"OK {fmtInts r}"
+      | .error e => iErrStr e
+  | _ => "BADARGS"
+
+/-- `insert <shape> <axis> <obj> <values>` prints `np.insert(np.arange(n), obj, values, axis)`. -/
+def diffInsert : Handler
+  | [shape, axis, obj, values] =>
+    match prepArray (parseInts shape) axis with
+    | .error e => iErrStr e
+    | .ok arr =>
+      match insertObj arr (parseObj obj) (parseInts values) with
+      | .ok r => s!"OK {fmtInts r}"
+      | .error e => iErrStr e
+  | _ => "BADARGS"
+
+/-- `pad <shape> <width shape> <width data>` prints the shape of `np.pad(np.zeros(shape), pad_width)` in constant mode. -/
+def diffPad : Handler
+  | [shape, ps, d] =>
+    match padShape (parseInts shape) (parseInts ps) (parseInts d) with
+    | .ok r => s!"OK {fmtInts r}"
+    | .error e => pErrStr e
+  | _ => "BADARGS"
+
 def handlers : List (String × Handler) :=
   [("bshapes", diffBShapes), ("bto", diffBTo), ("flags", diffFlags), ("reshape", diffReshape),
-   ("moveaxis", diffMoveaxis), ("transpose", diffTranspose), ("squeeze", diffSqueeze)]
+   ("moveaxis", diffMoveaxis), ("transpose", diffTranspose), ("squeeze", diffSqueeze),
+   ("asplit", diffASplit), ("split", diffNpSplit), ("delete", diffDelete), ("insert", diffInsert),
+   ("pad", diffPad)]
 
 end NumpyLean.Broadcast
