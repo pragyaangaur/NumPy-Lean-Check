@@ -1187,18 +1187,21 @@ inductive RErr where
   | itemsize
   deriving DecidableEq, Repr
 
-/-- The dtype of `np.array(memoryview(np.zeros(n, dtype)))`: `_descriptor_from_pep3118_format`, `buffer.c:917`, and then the check of `_array_from_buffer_3118`. -/
+/-- `_descriptor_from_pep3118_format`, `buffer.c:917`: the fast path, and when it gives up, the whitespace stripping and the Python parser. -/
+def parseBuffer (f : String) : Except RErr D :=
+  match fastLoop '=' false none f.toList with
+  | some x => .ok x
+  | none =>
+    match parseFormat (stripWs false f.toList) with
+    | .ok x => .ok x
+    | .error _ => .error .parse
+
+/-- The dtype of `np.array(memoryview(np.zeros(n, dtype)))`: the format string of the writer, `parseBuffer`, and then the check of `_array_from_buffer_3118`. -/
 def roundTrip (n : Nat) (d : D) : Except RErr D :=
   match bufferFormat n d with
   | .error e => .error (.format e)
   | .ok f =>
-    let r : Except RErr D :=
-      match fastLoop '=' false none f.toList with
-      | some x => .ok x
-      | none => match parseFormat (stripWs false f.toList) with
-        | .ok x => .ok x
-        | .error _ => .error .parse
-    match r with
+    match parseBuffer f with
     | .ok x => if x.size == d.size then .ok x else .error .itemsize
     | .error e => .error e
 
