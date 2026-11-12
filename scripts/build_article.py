@@ -20,7 +20,7 @@ CSS = """
 @media (prefers-color-scheme: dark) { :root { --bg: #181817; --ink: #ecebe6; --muted: #b3b1a8; --rule: #33322f; --code: #242422; --link: #7fb0f5; } }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 20px/1.6 "Latin Modern", Georgia, serif; }
-main { max-width: 700px; margin: 0 auto; padding: 56px 22px 80px; }
+main { max-width: 860px; margin: 0 auto; padding: 56px 22px 80px; }
 h1 { font-size: 2.05em; line-height: 1.2; margin: 0 0 12px; }
 h2 { font-size: 1.3em; margin: 2em 0 0.5em; }
 p, li { margin: 0 0 1em; }
@@ -32,7 +32,7 @@ pre { background: var(--code); padding: 16px 18px; border-radius: 8px; overflow-
 pre code { background: none; padding: 0; font-size: 0.78em; }
 figure { margin: 1.6em 0; }
 figure img { width: 100%; height: auto; border-radius: 10px; }
-@media (min-width: 1000px) { figure { margin-left: -130px; margin-right: -130px; } }
+@media (min-width: 1000px) { figure { margin-left: -60px; margin-right: -60px; } }
 footer { margin-top: 3em; padding-top: 1em; border-top: 1px solid var(--rule); color: var(--muted); font-size: 0.85em; }
 @media (max-width: 600px) { body { font-size: 18px; } h1 { font-size: 1.7em; } }
 """.replace("FONTS/", FONTS)
