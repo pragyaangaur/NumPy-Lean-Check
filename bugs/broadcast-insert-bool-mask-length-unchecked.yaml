@@ -1,0 +1,11 @@
+id: broadcast-insert-bool-mask-length-unchecked
+title: insert accepts a boolean mask of the wrong length where delete raises ValueError
+area: Broadcast
+kind: inconsistent
+severity: low
+numpy_version: 2.5.4
+source: lib/_function_base_impl.py:5540
+property: NumpyLean.Broadcast.insert_mask_length_refuted
+summary: >
+  `np.delete(np.arange(3), np.array([False] * 5))` raises `ValueError: boolean array argument obj to delete must be one dimensional and match the axis length of 3` (lib/_function_base_impl.py:5372). `np.insert` documents a boolean `obj` as a mask in the same way, but it only turns the mask into positions with `np.flatnonzero(obj)` (line 5540) and never compares the length with the axis. `np.insert(np.arange(3), np.array([False] * 5), 9)` returns `[0, 1, 2]` without an error, and the mask `[True, False, False, False, False]` inserts 9 before element 0. A mask that is shorter than the axis is accepted the same way. A true entry past the end of the axis fails only because its position then exceeds `N`.
+upstream: NEW, searched open and closed issues and PRs on 12 Nov 2026, no report about the mask length in insert, the boolean mask support was added by https://github.com/numpy/numpy/pull/33259 and its fix for lists does not add a length check, main still uses np.flatnonzero(obj) without comparing the length
