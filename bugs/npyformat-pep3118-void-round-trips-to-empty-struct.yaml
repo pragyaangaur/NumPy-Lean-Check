@@ -1,0 +1,11 @@
+id: npyformat-pep3118-void-round-trips-to-empty-struct
+title: np.array(memoryview(a)) turns an unstructured V dtype into a structured dtype with no fields
+area: NpyFormat
+kind: inconsistent
+severity: low
+numpy_version: 2.5.4
+source: _core/_internal.py:748
+property: NumpyLean.NpyFormat.round_trip_returns_original_refuted
+summary: >
+  `memoryview(np.zeros(3, 'V4')).format` is `4x` (buffer.c:416-421), the format for four padding bytes. The reader treats `x` without a name as padding and does not add a field (`_internal.py:748`), so the field lists stay empty and the result is `dtype({'names': [], 'formats': [], 'offsets': [], 'itemsize': 4})`, a structured dtype with `names == ()` and no fields. It is not equal to `np.dtype('V4')`, which has `names None`, and `dtype.fields` differs, so `np.array(memoryview(a)).dtype != a.dtype`. The item size is kept, which is why the check at ctors.c:1247 does not complain. The dtype of a void array does not survive the round trip that works for every other unstructured dtype.
+upstream: NEW, searched open and closed issues and pull requests on 12 Nov 2026, closest is https://github.com/numpy/numpy/pull/31547 (closed unmerged, changes how padding is written and read but not this case), main has the same code
