@@ -67,4 +67,4 @@ I did not report the bugs one by one. Instead, I wrote a short post in my own wo
 
 A proof is only as good as the copy it is about. The race in step 3 is strong evidence that the Lean copy matches NumPy, but it is not a proof that it matches. Every bug is therefore also confirmed by running real NumPy, and that check is the one I trust. The model covers a small part of the library, and it says nothing about floating point maths, linear algebra or anything else I left out. "New" means my searches found no earlier report, and GitHub's search is weak, so some of the 26 may turn out to be known.
 
-The whole project took two days on a 16 GB laptop. The code, the proofs, the 55 bug records and a script that reruns every reproducer are in the [repository](https://github.com/pragyaangaur/NumPy-Lean-Check).
+The whole project took one day on a laptop. The code, the proofs, the 55 bug records and a script that reruns every reproducer are in the [repository](https://github.com/pragyaangaur/NumPy-Lean-Check).
