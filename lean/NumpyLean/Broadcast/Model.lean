@@ -704,6 +704,10 @@ inductive PErr where
   | conv
   /-- "array is too big" from `np.empty` of the padded shape. -/
   | tooBig
+  /-- "negative dimensions are not allowed" from `np.empty`, when `left + size + right` wrapped to a negative number. -/
+  | negDim
+  /-- "could not broadcast input array from shape ... into shape ..." when the wrapped slice that receives the original array has the wrong length. -/
+  | assign
   deriving Repr, DecidableEq
 
 /-- Broadcast a width array of shape `ps` and flat data `d` to `(ndim, 2)` and read it as `ndim` pairs, as `np.broadcast_to(x, (ndim, 2)).tolist()` at line 533. -/
@@ -721,25 +725,33 @@ def broadcastPairs (ndim : Nat) (ps : List Int) (d : List Int) : Except PErr (Li
         let get (j : Nat) : Int := d.getD ((if a == 1 then 0 else i) * b.toNat + (if b == 1 then 0 else j)) 0
         (get 0, get 1))
 
-/-- `_as_pairs(x, ndim, as_index=True)` at `_arraypad_impl.py:471-534` for an integer array of shape `ps` with flat data `d`. The rounding at line 506 does nothing for integers. -/
-def asPairs (ndim : Nat) (ps : List Int) (d : List Int) : Except PErr (List (Int × Int)) :=
+/-- `_as_pairs(x, ndim, as_index=True)` at `_arraypad_impl.py:471-534` for an integer array of shape `ps` with flat data `d`. The rounding at line 506 does nothing for integers. The second result says whether the pairs hold NumPy `intp` scalars (the two fast paths at lines 519 and 529, which return `x[0]` and `x[1]`) or Python integers (the `tolist` path at line 540). Arithmetic on `intp` scalars wraps. -/
+def asPairs (ndim : Nat) (ps : List Int) (d : List Int) : Except PErr (List (Int × Int) × Bool) :=
   let size : Int := ps.foldl (· * ·) 1
   if ps.length < 3 && size == 1 then
-    if d.headD 0 < 0 then .error .negative else .ok (List.replicate ndim (d.headD 0, d.headD 0))
+    if d.headD 0 < 0 then .error .negative else .ok (List.replicate ndim (d.headD 0, d.headD 0), true)
   else if ps.length < 3 && size == 2 && ps != [2, 1] then
-    if d.any (· < 0) then .error .negative else .ok (List.replicate ndim (d.headD 0, d.getD 1 0))
+    if d.any (· < 0) then .error .negative else .ok (List.replicate ndim (d.headD 0, d.getD 1 0), true)
   else if d.any (· < 0) then .error .negative
-  else broadcastPairs ndim ps d
+  else do
+    let r ← broadcastPairs ndim ps d
+    .ok (r, false)
 
-/-- `np.pad(array, pad_width)` in constant mode, the shape of the result. `pad_width` is built from a Python list, so it has integer dtype only when it is non-empty and every entry fits `npy_intp` (a larger entry makes the dtype unsigned, float or object). `padded = np.empty(new_shape)` with a float64 array of item size 8 then checks the shape like `PyArray_NewFromDescr` does, using `ctorCheck`. -/
+/-- `np.pad(array, pad_width)` in constant mode on a float64 array, the shape of the result. `pad_width` is built from a Python list, so it has integer dtype only when it is non-empty and every entry fits `npy_intp` (a larger entry makes the dtype unsigned, float or object). `_pad_simple` at `_arraypad_impl.py:87-127` computes `left + size + right` for each axis, which wraps when the pairs are `intp` scalars, and then `np.empty(new_shape)`, which checks the shape like `PyArray_NewFromDescr` does, using `ctorCheck` with item size 8. The copy `padded[slice(left, left + size)] = array` must then broadcast, which fails when the wrapped slice does not have the length of the original axis. -/
 def padShape (shape : List Int) (ps : List Int) (d : List Int) : Except PErr (List Int) :=
   if d.isEmpty || d.any (fun x => !(inIntp x)) then .error .type
   else do
-    let pairs ← asPairs shape.length ps d
-    let new := (shape.zip pairs).map fun (s, (l, r)) => l + s + r
+    let (pairs, scalars) ← asPairs shape.length ps d
+    let triples := shape.zip pairs
+    let add (a b : Int) : Int := if scalars then wrap64 (a + b) else a + b
+    let new := triples.map fun (s, (l, r)) => add (add l s) r
     if new.any (fun x => !(inIntp x)) then .error .conv
     else match ctorCheck new 8 with
-      | .ok () => .ok new
+      | .error .negative => .error .negDim
       | .error _ => .error .tooBig
+      | .ok () =>
+        let region := (triples.zip new).map fun ((s, (l, _)), n) => (s, sliceLen n l (add l s))
+        if region.any (fun (a, r) => a != r && a != 1) then .error .assign
+        else .ok new
 
 end NumpyLean.Broadcast
