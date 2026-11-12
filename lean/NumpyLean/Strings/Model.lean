@@ -467,7 +467,7 @@ def stripCore (mode : Strip) (inLeft inRight : Int → Bool) (a : Str) : Str :=
   else (rest.reverse.dropWhile inRight).reverse
 
 /--
-Whether `c` is found in the strip set `ch`. For `S` and `U` this is `find_char` over the `len2` units of `ch`. For `StringDType` the C code takes the one-byte branch for an ASCII character and passes `len2`, the number of code points, as the length of a search over the UTF-8 bytes of `ch` (`string_buffer.h:1263`, `:1316`). When `ch` holds multi-byte characters the byte string is longer than `len2`, so the last bytes are never searched. A character of two or more bytes is searched for in the whole byte string.
+Whether `c` is found in the strip set `ch`. For `S` and `U` this is `find_char` over the `len2` units of `ch`. For `StringDType` the C code takes the one-byte branch for an ASCII character and passes `len2`, the number of code points, as the length of a search over the UTF-8 bytes of `ch` (`string_buffer.h:1270`, `:1316`). When `ch` holds multi-byte characters the byte string is longer than `len2`, so the last bytes are never searched. A character of two or more bytes is searched for in the whole byte string.
 -/
 def inStripSet (k : Kind) (ch : Str) (c : Int) : Bool :=
   if k == .T && utf8Size c == 1 then ((ch.flatMap utf8Encode).take ch.length).contains c
