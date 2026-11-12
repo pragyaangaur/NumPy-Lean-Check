@@ -566,4 +566,69 @@ def pyIntOp (n : Nat) (v : Int) : Option Descr := do
   let d := defaultDescr dt
   if isInteger d.num && pyIntSetitemOverflows d.num v then none else some d
 
+/-! ## Python ints of any size with floating point and complex dtypes
+
+A Python int `v` that meets a floating point or complex dtype by NEP 50 takes the dtype of the other operand (`pyIntOpDType` above), and the value is stored with the `setitem` of that dtype. The model assumes the platform of the reference runs, macOS arm64, where `long double` is the 64 bit `double`, so `ldMantBits` is 53 and `ldMaxExp` is 1024. On x86-64 Linux they would be 64 and 16384.
+-/
+
+def ldMantBits : Nat := 53
+def ldMaxExp : Nat := 1024
+
+/-- Round a natural number to `bits` significant bits, to nearest and ties to even. The result is the exact value of the rounded number. -/
+def roundSig (bits v : Nat) : Nat :=
+  if v < 2 ^ bits then v
+  else
+    let sh := Nat.log2 v + 1 - bits
+    let q := v / 2 ^ sh
+    let r := v % 2 ^ sh
+    let half := 2 ^ (sh - 1)
+    (if half < r || (r == half && q % 2 == 1) then q + 1 else q) * 2 ^ sh
+
+/-- `PyLong_AsDouble`, which `PyNumber_Float` (`MyPyFloat_AsDouble`, `arraytypes.c.src:105`) and `PyComplex_AsCComplex` use. It rounds the integer correctly and raises `OverflowError` ("int too large to convert to float") when the rounded value is `2**1024` or more. The result is the magnitude. -/
+def pyLongToDouble (v : Int) : Option Nat :=
+  let m := roundSig 53 v.natAbs
+  if 2 ^ 1024 ≤ m then none else some m
+
+/-- The result of storing a Python int in a floating point or complex dtype: whether the stored value is infinite, whether a `RuntimeWarning` is given, or `OverflowError`. -/
+inductive PyIntConv where
+  | ok (isInf : Bool) (warns : Bool)
+  | overflowError
+  deriving DecidableEq, Repr
+
+/-- Narrowing a double to a type of `bits` significant bits and largest exponent `emax` overflows when the rounded value reaches `2**emax`. -/
+def narrowsToInf (bits emax d : Nat) : Bool := 2 ^ emax ≤ roundSig bits d
+
+/--
+The `setitem` of each floating point and complex dtype for a Python int, which `np.asarray(v, dtype)` and the array operand of a ufunc run, `arraytypes.c.src:355` and `arraytypes.c.src:449-540`. `none` for other dtypes.
+
+- `HALF_setitem` and `FLOAT_setitem` convert with `MyPyFloat_AsHalf` and `MyPyFloat_AsFloat` (`arraytypes.c.src:123-150`): the double first, with `OverflowError` for a huge int, then the narrowing, and a `RuntimeWarning` ("overflow encountered in cast", `PyUFunc_GiveFloatingpointErrors`) when the narrowed value is infinite. The two roundings are separate, so the ints a little below the exact limit of float32 round up to the double that is the limit and then overflow.
+- `DOUBLE_setitem` is `MyPyFloat_AsDouble` alone.
+- `CFLOAT_setitem`, `CDOUBLE_setitem` and `CLONGDOUBLE_setitem` convert with `PyComplex_AsCComplex`, which takes the int through a double and raises the same `OverflowError`. The complex float32 narrowing warns like the real one. `CLONGDOUBLE_setitem` keeps the double.
+- `LONGDOUBLE_setitem` calls `string_to_long_double` (`arraytypes.c.src:526`), which sends a Python int to `npy_longdouble_from_PyLong` (`common/npy_longdouble.c:128`). That formats the int as a decimal string and calls `strtold`, so there is no range loss through a double and no `OverflowError`: an int beyond the range of `long double` gives an infinity and `RuntimeWarning: overflow encountered in conversion from python long`.
+-/
+def pyIntToFloat (n : Nat) (v : Int) : Option PyIntConv :=
+  if !(isFloat n || isComplex n) then none
+  else if n == NPY_LONGDOUBLE then
+    let inf := 2 ^ ldMaxExp ≤ roundSig ldMantBits v.natAbs
+    some (.ok inf inf)
+  else
+    match pyLongToDouble v with
+    | none => some .overflowError
+    | some d =>
+      if n == NPY_HALF then
+        let inf := narrowsToInf 11 16 d
+        some (.ok inf inf)
+      else if n == NPY_FLOAT || n == NPY_CFLOAT then
+        let inf := narrowsToInf 24 128 d
+        some (.ok inf inf)
+      else some (.ok false false)
+
+/--
+`np.float32(1) + v` and the like: `convert_to_@name@`, `umath/scalarmath.c.src:973-1001`. A Python int that is safe to cast from `long` and fits in a `long` is converted with a C cast, which neither overflows nor warns. Any other Python int is sent to the `setitem` of the dtype (`CONVERT_PYSCALAR`, `scalarmath.c.src:1248`), which is the array path.
+-/
+def pyIntScalarConv (n : Nat) (v : Int) : Option PyIntConv :=
+  if canCastSafelyTable NPY_LONG n && inIntp v && (isFloat n || isComplex n) then some (.ok false false)
+  else pyIntToFloat n v
+
+
 end NumpyLean.DType
