@@ -7,6 +7,26 @@ import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ORDER = ["high", "medium", "low"]
+VERDICTS = ["NEW", "RELATED", "KNOWN-OPEN", "KNOWN-CLOSED", "FIXED-ON-MAIN", "not searched"]
+
+
+def verdict(rec):
+    up = rec.get("upstream", "")
+    for v in VERDICTS:
+        if up.startswith(v):
+            return v
+    return "not searched"
+
+
+def first_link(rec):
+    # A NEW record may name the closest unrelated issue, which is not a match, so no link is shown for it.
+    if rec["verdict"] == "NEW":
+        return ""
+    for word in rec.get("upstream", "").split():
+        if word.startswith("https://github.com/numpy/numpy/"):
+            url = word.rstrip(",.;)")
+            return f"[numpy#{url.rsplit('/', 1)[1]}]({url})"
+    return ""
 
 
 def read_record(path):
@@ -26,6 +46,10 @@ def main():
     recs.sort(key=lambda r: (ORDER.index(r["severity"]), r["area"], r["id"]))
     counts = {s: sum(r["severity"] == s for r in recs) for s in ORDER}
     areas = sorted({r["area"] for r in recs})
+    verdicts = {}
+    for r in recs:
+        r["verdict"] = verdict(r)
+        verdicts[r["verdict"]] = verdicts.get(r["verdict"], 0) + 1
     out = [
         "# Findings",
         "",
@@ -33,15 +57,17 @@ def main():
         "",
         f"By severity there are {counts['high']} high, {counts['medium']} medium and {counts['low']} low records. By area the counts are " + ", ".join(f"{a} {sum(r['area'] == a for r in recs)}" for a in areas) + ".",
         "",
-        "None of these has been reported to NumPy, and the `upstream` field of each record says whether an existing issue was searched for.",
+        "None of these has been reported to NumPy by this project. On 12 November 2026 every record was searched for in the open and closed issues and pull requests of numpy/numpy, and the cited code was compared with NumPy main. The verdict is in the `upstream` field of each record and in the tables below. NEW means no issue or pull request describes the bug and main still has the code. RELATED means similar reports exist but none describes this bug. KNOWN-OPEN and KNOWN-CLOSED mean an open or closed issue or pull request covers it. FIXED-ON-MAIN means NumPy fixed it after 2.5.4.",
+        "",
+        "By verdict there are " + ", ".join(f"{v} {n}" for v, n in sorted(verdicts.items(), key=lambda kv: VERDICTS.index(kv[0]))) + ".",
     ]
     for sev in ORDER:
         group = [r for r in recs if r["severity"] == sev]
         if not group:
             continue
-        out += ["", f"## {sev.capitalize()} severity", "", "| Record | Area | Kind | What goes wrong |", "| --- | --- | --- | --- |"]
+        out += ["", f"## {sev.capitalize()} severity", "", "| Record | Area | Kind | Upstream | What goes wrong |", "| --- | --- | --- | --- | --- |"]
         for r in group:
-            out.append(f"| [{r['id']}]({r['id']}.yaml) ([repro](repro/{r['id']}.py)) | {r['area']} | {r['kind']} | {r['title']} |")
+            out.append(f"| [{r['id']}]({r['id']}.yaml) ([repro](repro/{r['id']}.py)) | {r['area']} | {r['kind']} | {r['verdict']} {first_link(r)} | {r['title']} |")
     open(os.path.join(ROOT, "bugs", "FINDINGS.md"), "w").write("\n".join(out) + "\n")
     print(f"wrote {len(recs)} records")
 
