@@ -243,3 +243,7 @@ The first command clones the NumPy 2.5.4 source into `vendor/numpy`, so that the
 The method follows [python-formalization](https://github.com/Broyojo/python-formalization), which models CPython in Lean and tests the model against the real interpreter, and [julia-in-lean](https://github.com/MilesCranmer/julia-in-lean), which does the same for Julia. As far as a search in November 2026 could tell, this is the first time the method has been applied to NumPy. [NumpySpec](https://github.com/Beneficial-AI-Foundation/NumpySpec) and [TensorLib](https://github.com/leanprover/TensorLib) write NumPy-like arrays in Lean from scratch, while this project copies NumPy's own code and checks it against the library.
 
 None of these bugs has been reported to NumPy from this project. Anyone who wants to report one should read NumPy's contributing guidelines first and write the report in their own words.
+
+## Licence
+
+The code, models, tests and bug records in this repository are under the MIT licence in [LICENSE](LICENSE). NumPy is a separate project under its own BSD licence, and `scripts/fetch_numpy.sh` downloads it rather than copying it here. The C excerpts quoted in this README and in the model comments come from NumPy 2.5.4.
