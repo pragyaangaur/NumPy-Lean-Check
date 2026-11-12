@@ -99,7 +99,7 @@ theorem center_examples :
     padCore .center [97, 98, 99] 6 32 = [32, 97, 98, 99, 32, 32] := by decide
 
 /-- PROP strings.center.huge_width_same_error_kind : REFUTED
-Source: `center`, `ljust`, `rjust` and `zfill` with a width that is far too large. The `S` and `U` wrappers build the dtype `S<width>` or `U<width>` first, and `np.dtype` rejects an item size above `INT_MAX` with `TypeError: data type 'U...' not understood` (`strings.py:754`). The `StringDType` loop tries to allocate and raises `MemoryError`. `str.center` raises `MemoryError` or `OverflowError`. The same call on the three kinds gives different error kinds, and the `TypeError` message does not mention the width. -/
+Source: `center`, `ljust`, `rjust` and `zfill` with a width that is far too large. The `S` and `U` wrappers build the dtype `S<width>` or `U<width>` first, and `np.dtype` rejects an item size above `INT_MAX` with `TypeError: data type 'U...' not understood` (`strings.py:753`). The `StringDType` loop tries to allocate and raises `MemoryError`. `str.center` raises `MemoryError` or `OverflowError`. The same call on the three kinds gives different error kinds, and the `TypeError` message does not mention the width. -/
 theorem center_huge_width_error_kinds :
     justImpl .U .center [97] 4294967296 [32] = .error .dtype ∧
     justImpl .T .center [97] 4611686018427387904 [32] = .error .alloc := by decide
@@ -174,14 +174,14 @@ theorem rstrip_T_matches_python (a : Str) :
   simp [stripImpl, readStr, stripCore, pyRstripWs]
 
 /-- PROP strings.rstrip.u_matches_python : REFUTED
-Source: `string_lrstrip_whitespace` (`string_buffer.h:1202`). For `S` and `U` the right-hand test also removes NUL (`*traverse_buf != 0`), so the whitespace in front of an embedded NUL goes too. For `"a \x00\n"`, `str.rstrip` gives `"a \x00"`, which an `S` or `U` array reads as `"a "`, and `np.strings.rstrip` gives `"a"`. `StringDType` gives `"a \x00"`. -/
+Source: `string_lrstrip_whitespace` (`string_buffer.h:1203`). For `S` and `U` the right-hand test also removes NUL (`*traverse_buf != 0`), so the whitespace in front of an embedded NUL goes too. For `"a \x00\n"`, `str.rstrip` gives `"a \x00"`, which an `S` or `U` array reads as `"a "`, and `np.strings.rstrip` gives `"a"`. `StringDType` gives `"a \x00"`. -/
 theorem rstrip_U_nul_in_whitespace :
     stripImpl .U .right [97, 32, 0, 10] none ≠ readStr .U (pyRstripWs .U (readStr .U [97, 32, 0, 10])) := by decide
 
 /-! ## Long strings: the UTF-32 two-way search -/
 
 /-- PROP strings.find.u_periodicity_test_counts_bytes : REFUTED
-Source: `preprocess` (`string_fastsearch.h:639`) calls `memcmp(needle, needle + period, cut)` with `cut` counted in characters, so for `npy_ucs4` it compares only `cut` bytes. For the needle "bb" followed by 98 letters "a" the test says periodic for `U` and not periodic for `S`. The needle has no period. -/
+Source: `preprocess` (`string_fastsearch.h:673`) calls `memcmp(needle, needle + period, cut)` with `cut` counted in characters, so for `npy_ucs4` it compares only `cut` bytes. For the needle "bb" followed by 98 letters "a" the test says periodic for `U` and not periodic for `S`. The needle has no period. -/
 theorem u_periodic_flag_wrong :
     (preprocess (#[98, 98] ++ Array.replicate 98 97) 100 4).periodic = true ∧
     (preprocess (#[98, 98] ++ Array.replicate 98 97) 100 1).periodic = false := by
