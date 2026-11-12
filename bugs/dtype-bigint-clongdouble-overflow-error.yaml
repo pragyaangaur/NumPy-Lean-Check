@@ -1,0 +1,11 @@
+id: dtype-bigint-clongdouble-overflow-error
+title: A Python int of 2**1024 or more gives inf with a warning in a longdouble but raises OverflowError in a clongdouble
+area: DType
+kind: inconsistent
+severity: low
+numpy_version: 2.5.4
+source: _core/src/multiarray/arraytypes.c.src:526
+property: NumpyLean.DType.pyint_to_float_longdouble_complex_differ
+summary: >
+  `np.asarray(2**1024, dtype=np.longdouble)`, `np.longdouble(1) + 2**1024` and `np.ones(1, np.longdouble) + 2**1024` give `inf` and a `RuntimeWarning` ("overflow encountered in conversion from python long"), and the same three expressions with `np.clongdouble` raise `OverflowError: int too large to convert to float`. The real type stores a Python int with `npy_longdouble_from_PyLong` (arraytypes.c.src:526, common/npy_longdouble.c:128), which formats the int as a decimal string and calls `strtold` "without precision or range loss via a double". `CLONGDOUBLE_setitem` (arraytypes.c.src:449-540) uses `PyComplex_AsCComplex`, which converts through a double and raises from `2**1024 - 2**970` on. Every other pair of real and complex dtype (float32 with complex64, float64 with complex128) agrees. On this machine `long double` is the 64 bit double, so the two types have the same range and only the outcome differs, a warning with an infinity against an error. Where `long double` is wider (x86-64 Linux, 80 bit) the source says that a `longdouble` accepts a Python int up to about `2**16384` while a `clongdouble` still stops at `2**1024` (read from the code, not run here). The scalar and the array paths agree with each other for all seven float and complex dtypes.
+upstream: RELATED, searched open and closed issues and pull requests on 12 Nov 2026, closest is https://github.com/numpy/numpy/issues/26701 (open, clongdouble of a string goes through a double and loses precision, same cause with the complex setitem), main has the same code
