@@ -132,10 +132,36 @@ def diffFillDiag : Handler
     | .error .unequalDims => "ERR dims"
   | _ => "BADARGS"
 
+/-- An exact text form of a double: `0`, or the sign followed by `m@e` for `m * 2 ^ e` with `m` the 53-bit integer mantissa from `frexp`. -/
+def fmtDouble (f : Float) : String :=
+  if f == 0 then "0"
+  else
+    let (m, e) := (Float.abs f).frExp
+    let mi := (m * 9007199254740992.0).toUInt64
+    s!"{if f < 0 then "-" else ""}{mi}@{e - 53}"
+
+def histErrName : HistErr → String
+  | .bins => "bins" | .range => "range" | .tooMany => "toomany"
+  | .overflow => "overflow" | .index => "index" | .negIndex => "negindex"
+
+/-- `hist <data> <bins> <lo|N> <hi|N>` prints `OK <edges> <counts>`, `OK <edges> ERR <name>` when only `histogram` fails after `histogram_bin_edges` has succeeded, or `ERR <name>`. The edges are in the `fmtDouble` form. -/
+def diffHist : Handler
+  | [d, b, lo, hi] =>
+    let data := parseInts d
+    let rng : Option (Int × Int) := if lo == "N" then none else some (parseInt lo, parseInt hi)
+    match histEdges data (parseInt b) rng with
+    | .error e => s!"ERR {histErrName e}"
+    | .ok (f, l, edges) =>
+      let es := ",".intercalate (edges.map fmtDouble)
+      match histCounts data rng (parseInt b).toNat f l edges with
+      | .ok cs => s!"OK {es} {fmtInts cs}"
+      | .error e => s!"OK {es} ERR {histErrName e}"
+  | _ => "BADARGS"
+
 def handlers : List (String × Handler) :=
   [("arange", diffArange), ("binrepr", diffBinaryRepr), ("baserepr", diffBaseRepr),
    ("pack", diffPack), ("unpack", diffUnpack), ("isin", diffIsin),
    ("digitize", diffDigitize), ("bincount", diffBincount),
-   ("unique", diffUnique), ("filldiag", diffFillDiag)]
+   ("unique", diffUnique), ("filldiag", diffFillDiag), ("hist", diffHist)]
 
 end NumpyLean.LibInt
