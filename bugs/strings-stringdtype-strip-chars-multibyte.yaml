@@ -8,4 +8,4 @@ source: _core/src/umath/string_buffer.h:1270
 property: NumpyLean.Strings.strip_T_multibyte_chars
 summary: >
   In `string_lrstrip_chars` the UTF-8 branch looks up a one-byte character with `find_char(ind, len2, ch)` where `ind` is built over `buf2.buf` and `len2 = buf2.num_codepoints()` (string_buffer.h:1270 and :1316). `buf2` holds UTF-8 bytes, so when `chars` contains multi-byte characters the byte string is longer than `len2` and its last bytes are never searched. `np.strings.strip(np.array(['aaa'], dtype=StringDType()), 'éa')` returns 'aaa', while `'aaa'.strip('éa')` and the `U` kind give ''. The docstring says all combinations of the characters in `chars` are stripped.
-upstream: not searched
+upstream: FIXED-ON-MAIN https://github.com/numpy/numpy/pull/33133 (merged 23 Oct 2026, closes https://github.com/numpy/numpy/issues/33125)
