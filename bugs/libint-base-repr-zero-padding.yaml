@@ -8,4 +8,4 @@ source: _core/numeric.py:2160
 property: NumpyLean.LibInt.baseRepr_padding_refuted
 summary: >
   `base_repr` collects the digits of the number in the list `res`, appends `'0' * padding` when `padding` is nonzero (numeric.py:2156-2157) and returns `''.join(reversed(res or '0'))` (numeric.py:2160). Zero has no digits, and the fallback `'0'` is used only when `res` is empty, so the padding replaces the digit instead of being added to it. `np.base_repr(0, padding=2)` returns `'00'` although `np.base_repr(1, padding=2)` returns `'001'`, and `np.base_repr(0, padding=-1)` returns the empty string because `'0' * -1` is an empty but present element. The documentation of `padding` says "Number of zeros padded on the left", so zero with padding 2 should be `'000'`.
-upstream: not searched
+upstream: NEW, searched open and closed issues and pull requests on 12 Nov 2026, closest is https://github.com/numpy/numpy/issues/2146 (base_repr wrong digits, different cause), main has the same code
