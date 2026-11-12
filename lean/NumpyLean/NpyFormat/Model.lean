@@ -756,4 +756,437 @@ def loadtxtIntTyped (code : String) (s : List Char) : Option Int :=
     else loadtxtInt false 0 (2 ^ bits - 1) s
   | [] => none
 
+/-! ## PEP 3118 buffer format strings
+
+The writing side is `_buffer_format_string`, `_core/src/multiarray/buffer.c:191`. The reading side is `_dtype_from_pep3118`, `_core/_internal.py:627`, preceded by the C fast path `_descriptor_from_pep3118_format_fast`, `_core/src/multiarray/buffer.c:1002`, and followed by the item size check of `_array_from_buffer_3118`, `_core/src/multiarray/ctors.c:1245`. All of it is what `memoryview(np.zeros(n, dtype)).format` and `np.array(memoryview(...))` run.
+
+The model assumes the platform of the reference runs: little-endian, `long` of 8 bytes, `long double` of 8 bytes (macOS arm64, where `long double` is `double` but still its own NumPy type) and a freshly allocated array whose data pointer is aligned to 16 bytes. The alignments in `codeAlign` come from `np.dtype(...).alignment` on that platform.
+-/
+namespace Pep3118
+
+/-- A dtype as the buffer code sees it. `scalar order code size` has the byte order character of `descr->byteorder` (`=`, `<`, `>` or `|`), the NumPy type character and the item size in bytes. A subarray keeps its base, and a structured dtype keeps its item size and its fields with their offsets. Subarrays can be nested, because `np.dtype((np.dtype(('i4', (3,))), (2,)))` does not merge the shapes. -/
+inductive D where
+  | scalar (order : Char) (code : Char) (size : Nat)
+  | sub (shape : List Nat) (base : D)
+  | struct (itemsize : Nat) (fields : List (String × Nat × D))
+  deriving BEq, Repr
+
+def prod (l : List Nat) : Nat := l.foldl (· * ·) 1
+
+/-- Item size in bytes of a fixed size type character. -/
+def codeSize : Char → Nat
+  | '?' | 'b' | 'B' => 1
+  | 'h' | 'H' | 'e' => 2
+  | 'i' | 'I' | 'f' => 4
+  | 'l' | 'L' | 'q' | 'Q' | 'd' | 'g' | 'F' | 'M' | 'm' | 'O' => 8
+  | 'D' | 'G' => 16
+  | _ => 0
+
+/-- `descr->alignment` on arm64: `F` aligns like `float`, `G` like a pointer, `U` like `int`. -/
+def codeAlign : Char → Nat
+  | '?' | 'b' | 'B' | 'S' | 'V' => 1
+  | 'h' | 'H' | 'e' => 2
+  | 'i' | 'I' | 'f' | 'F' | 'U' => 4
+  | _ => 8
+
+/-- `dtype.kind`. -/
+def codeKind : Char → Char
+  | '?' => 'b'
+  | 'b' | 'h' | 'i' | 'l' | 'q' => 'i'
+  | 'B' | 'H' | 'I' | 'L' | 'Q' => 'u'
+  | 'e' | 'f' | 'd' | 'g' => 'f'
+  | 'F' | 'D' | 'G' => 'c'
+  | c => c
+
+/-- `dtype.byteorder` as NumPy normalises it: one byte types, bool, bytes, void and object are `|`, and `<` is `=` on a little-endian host. -/
+def canonOrder (order code : Char) (size : Nat) : Char :=
+  let k := codeKind code
+  if k == 'b' || k == 'S' || k == 'V' || k == 'O' || size == 1 then '|'
+  else if order == '<' || order == '|' then '=' else order
+
+/-- The scalar with the item size of its type character, or `n` characters for `S`, `U` and `V`. -/
+def mkScalar (order code : Char) (n : Nat) : D :=
+  .scalar order code (if code == 'S' || code == 'V' then n else if code == 'U' then 4 * n else codeSize code)
+
+def D.size : D → Nat
+  | .scalar _ _ s => s
+  | .sub sh b => prod sh * b.size
+  | .struct n _ => n
+
+def hexc (n : Nat) : Char := "0123456789abcdef".toList.getD n '0'
+
+def hexName (s : String) : String :=
+  String.ofList (s.toUTF8.toList.flatMap fun b => [hexc (b.toNat / 16), hexc (b.toNat % 16)])
+
+/-- A canonical text for a dtype, equal to the text the Python side builds from `dtype.kind`, `dtype.byteorder`, `dtype.itemsize`, `dtype.subdtype` and `dtype.fields`. -/
+def canon : D → String
+  | .scalar o c s => String.ofList [canonOrder o c s, codeKind c] ++ toString s
+  | .sub sh b => "A" ++ "x".intercalate (sh.map toString) ++ "(" ++ canon b ++ ")"
+  | .struct n fs => "T" ++ toString n ++ "{" ++ ";".intercalate (canonFields fs) ++ "}"
+where
+  canonFields : List (String × Nat × D) → List String
+    | [] => []
+    | (nm, off, d) :: r => (hexName nm ++ "@" ++ toString off ++ "@" ++ canon d) :: canonFields r
+
+/-! ### Writing the format string -/
+
+inductive FErr where
+  /-- `ValueError: cannot include dtype 'M' in a buffer`, the `default` of the switch at `buffer.c:399`. -/
+  | notInBuffer
+  /-- `ValueError: cannot expose native-only dtype 'g' in non-native byte order '>' via buffer interface`, `buffer.c:353`. -/
+  | nativeOnly
+  /-- `ValueError: dtypes with overlapping or out-of-order fields are not representable as buffers`, `buffer.c:279`. -/
+  | overlap
+  /-- `ValueError: ':' is not an allowed character in buffer field names`, `buffer.c:115`. -/
+  | colon
+  deriving DecidableEq, Repr
+
+/-- The running state of `_buffer_format_string`: the text so far, `*offset` and `*active_byteorder`. -/
+structure FS where
+  out : String
+  off : Nat
+  active : Char
+
+/-- `_is_natively_aligned_at`, `buffer.c:141`. The array is one dimensional of length `n` with item size `stride`. For the descriptor of the array itself (`top`) only the array flag is read, and a fresh array is aligned. For others the code checks the data pointer (assumed aligned), the offset, the item size of the leaf and the stride when the length is above one. It never looks at the item size of the enclosing structure. -/
+def isNativelyAligned (top : Bool) (n stride : Nat) (c : Char) (size off : Nat) : Bool :=
+  if top then true
+  else
+    let a := codeAlign c
+    off % a == 0 && size % a == 0 && (n ≤ 1 || stride % a == 0)
+
+/-- The switch of `buffer.c:367`. `std` is `is_standard_size`, which only picks `q` over `l`. -/
+def typeStr (c : Char) (std : Bool) (size : Nat) : Option String :=
+  match c with
+  | '?' => some "?" | 'b' => some "b" | 'B' => some "B" | 'h' => some "h" | 'H' => some "H"
+  | 'i' => some "i" | 'I' => some "I"
+  | 'l' => some (if std then "q" else "l")
+  | 'L' => some (if std then "Q" else "L")
+  | 'q' => some "q" | 'Q' => some "Q" | 'e' => some "e" | 'f' => some "f" | 'd' => some "d" | 'g' => some "g"
+  | 'F' => some "Zf" | 'D' => some "Zd" | 'G' => some "Zg"
+  | 'O' => some "O"
+  | 'S' => some (toString size ++ "s")
+  | 'U' => some (toString (size / 4) ++ "w")
+  | 'V' => some (toString size ++ "x")
+  | _ => none
+
+/-- The leaf branch, `buffer.c:312` to `buffer.c:413`. -/
+def scalarFormat (top : Bool) (n stride : Nat) (st : FS) (order c : Char) (size : Nat) : Except FErr FS :=
+  let nativeOnly := c == 'g' || c == 'G'
+  let aligned := isNativelyAligned top n stride c size st.off
+  let r : Except FErr (Bool × String × Char) :=
+    if order == '=' && aligned then
+      .ok (false, if st.active != '@' then "@" else "", '@')
+    else if order == '=' && nativeOnly then
+      .ok (false, if st.active != '^' then "^" else "", '^')
+    else if order == '<' || order == '>' || order == '=' then
+      if nativeOnly then .error .nativeOnly
+      else .ok (true, if st.active != order then order.toString else "", order)
+    else .ok (true, "", st.active)
+  match r with
+  | .error e => .error e
+  | .ok (std, pre, act) =>
+    match typeStr c std size with
+    | none => .error .notInBuffer
+    | some t => .ok { out := st.out ++ pre ++ t, off := st.off + size, active := act }
+
+/-- `_buffer_format_string`, `buffer.c:191`. -/
+def fmtD (top : Bool) (n stride : Nat) : D → FS → Except FErr FS
+  | .sub sh b, st =>
+    let old := st.off
+    match fmtD false n stride b { st with out := st.out ++ "(" ++ ",".intercalate (sh.map toString) ++ ")" } with
+    | .error e => .error e
+    | .ok st' => .ok { st' with off := old + (st'.off - old) * prod sh }
+  | .struct _ fs, st =>
+    match fmtFields n stride st.off fs { st with out := st.out ++ "T{" } with
+    | .error e => .error e
+    | .ok st' => .ok { st' with out := st'.out ++ "}" }
+  | .scalar o c s, st => scalarFormat top n stride st o c s
+where
+  fmtFields (n stride base : Nat) : List (String × Nat × D) → FS → Except FErr FS
+    | [], st => .ok st
+    | (nm, foff, d) :: rest, st =>
+      let newOff := foff + base
+      if st.off > newOff then .error .overlap
+      else
+        let st1 := { st with out := st.out ++ String.ofList (List.replicate (newOff - st.off) 'x'), off := newOff }
+        match fmtD false n stride d st1 with
+        | .error e => .error e
+        | .ok st2 =>
+          if nm.toList.contains ':' then .error .colon
+          else fmtFields n stride base rest { st2 with out := st2.out ++ ":" ++ nm ++ ":" }
+
+/-- The format string of `memoryview(np.zeros(n, dtype))`, `_buffer_info_new`, `buffer.c:462`. -/
+def bufferFormat (n : Nat) (d : D) : Except FErr String :=
+  match fmtD true n d.size d { out := "", off := 0, active := '@' } with
+  | .ok st => .ok st.out
+  | .error e => .error e
+
+/-! ### Reading it back -/
+
+/-- The exception types of `_dtype_from_pep3118` that the tests tell apart. -/
+inductive PErr where
+  /-- `ValueError`: unknown specifier, a missing closing bracket or colon, a bad integer or a bad shape. -/
+  | value
+  /-- `NotImplementedError` for `u`, `&`, `t` and `X`. -/
+  | notImpl
+  /-- `RuntimeError` for a duplicate field name. -/
+  | runtime
+  /-- `IndexError` from `stream.next` on an empty stream. -/
+  | index
+  /-- `KeyError` for `Z` followed by a character that makes no complex type. -/
+  | key
+  deriving DecidableEq, Repr
+
+/-- The stream: the rest of the string and `stream.byteorder`. -/
+structure PS where
+  s : List Char
+  bo : Char
+
+/-- The lists of `field_spec`, with `offset` and `common_alignment`. -/
+structure Acc where
+  names : List (Option String)
+  formats : List D
+  offsets : List Nat
+  itemsize : Nat
+  offset : Nat
+  common : Nat
+
+def Acc.init : Acc := { names := [], formats := [], offsets := [], itemsize := 0, offset := 0, common := 1 }
+
+/-- `Stream.consume_until(c)` for a character: the text before it and the rest after it, or `none` for the `ValueError` of `str.index`. -/
+def splitAtChar (c : Char) : List Char → Option (List Char × List Char)
+  | [] => none
+  | x :: r => if x == c then some ([], r) else (splitAtChar c r).map fun (a, b) => (x :: a, b)
+
+def digitsNat (l : List Char) : Nat := l.foldl (fun a c => a * 10 + (c.toNat - 48)) 0
+
+/-- `int(text)` for ASCII text: an optional sign and at least one digit. -/
+def pyInt (l : List Char) : Option Int :=
+  let ds (r : List Char) : Option Nat := if !r.isEmpty && r.all Char.isDigit then some (digitsNat r) else none
+  match l with
+  | '-' :: r => (ds r).map fun n => -(n : Int)
+  | '+' :: r => (ds r).map fun n => (n : Int)
+  | _ => (ds l).map fun n => (n : Int)
+
+/-- `tuple(map(int, shape.split(',')))`. -/
+def parseShape (l : List Char) : Option (List Int) :=
+  ((String.ofList l).splitOn ",").mapM fun p => pyInt p.toList
+
+/-- The characters of `type_map_chars`: `g` is only there for the native map. -/
+def typeChars (native : Bool) : List Char :=
+  "?cbBhHiIlLqQefdZswOx".toList ++ (if native then ['g'] else [])
+
+/-- `_pep3118_native_map` and `_pep3118_standard_map`, `_internal.py:545` and `_internal.py:581`, as the NumPy type character of the result. The standard `l` is a 4 byte integer, so it maps to `i`. -/
+def lookupType (native : Bool) (tc : String) : Option Char :=
+  match tc with
+  | "?" => some '?' | "c" => some 'S' | "b" => some 'b' | "B" => some 'B'
+  | "h" => some 'h' | "H" => some 'H' | "i" => some 'i' | "I" => some 'I'
+  | "l" => some (if native then 'l' else 'i')
+  | "L" => some (if native then 'L' else 'I')
+  | "q" => some 'q' | "Q" => some 'Q' | "e" => some 'e' | "f" => some 'f' | "d" => some 'd'
+  | "g" => if native then some 'g' else none
+  | "Zf" => some 'F' | "Zd" => some 'D'
+  | "Zg" => if native then some 'G' else none
+  | "s" => some 'S' | "w" => some 'U' | "O" => some 'O' | "x" => some 'V'
+  | _ => none
+
+/-- `_add_trailing_padding`, `_internal.py:790`. A structured value keeps its fields, any other value becomes the field `f0`. -/
+def addTrailingPadding (v : D) (pad : Nat) : D :=
+  match v with
+  | .struct n fs => .struct (n + pad) fs
+  | _ => .struct (v.size + pad) [("f0", 0, v)]
+
+/-- `_fix_names`, `_internal.py:773`. -/
+def fixNames : List String → List (Option String) → List String
+  | done, [] => done
+  | done, none :: rest =>
+    let taken := done ++ rest.filterMap id
+    let j := ((List.range (taken.length + 1)).find? fun j => !taken.contains ("f" ++ toString j)).getD 0
+    fixNames (done ++ ["f" ++ toString j]) rest
+  | done, some n :: rest => fixNames (done ++ [n]) rest
+
+def zipFields : List String → List Nat → List D → List (String × Nat × D)
+  | n :: ns, o :: os, f :: fs => (n, o, f) :: zipFields ns os fs
+  | _, _, _ => []
+
+/-- The end of `__dtype_from_pep3118`, `_internal.py:733` to `_internal.py:748`. -/
+def finishParse (ps : PS) (acc : Acc) (isSub : Bool) : D × Nat × PS :=
+  let itemsize := if ps.bo == '@' then acc.itemsize + (acc.common - acc.offset % acc.common) % acc.common else acc.itemsize
+  match acc.names, acc.offsets, acc.formats with
+  | [none], 0 :: _, f :: _ =>
+    if itemsize == f.size && !isSub then (f, acc.common, ps)
+    else (.struct itemsize (zipFields (fixNames [] acc.names) acc.offsets acc.formats), acc.common, ps)
+  | _, _, _ => (.struct itemsize (zipFields (fixNames [] acc.names) acc.offsets acc.formats), acc.common, ps)
+
+/-- `__dtype_from_pep3118`, `_internal.py:632`. The fuel only bounds the recursion, because every loop turn consumes a character. -/
+def parseLoop : Nat → PS → Acc → Bool → Except PErr (D × Nat × PS)
+  | 0, _, _, _ => .error .value
+  | f + 1, ps, acc, isSub =>
+    match ps.s with
+    | [] => .ok (finishParse ps acc isSub)
+    | '}' :: rest => .ok (finishParse { ps with s := rest } acc isSub)
+    | _ => do
+      -- sub-arrays (1)
+      let (shape, ps) ← (match ps.s with
+        | '(' :: rest =>
+          match splitAtChar ')' rest with
+          | none => throw PErr.value
+          | some (sh, rest') =>
+            match parseShape sh with
+            | none => throw PErr.value
+            | some l => pure (some l, { ps with s := rest' })
+        | _ => pure (none, ps))
+      -- byte order
+      let ps ← (match ps.s with
+        | [] => throw PErr.index
+        | c :: rest =>
+          if c == '@' || c == '=' || c == '<' || c == '>' || c == '^' || c == '!' then
+            pure { s := rest, bo := if c == '!' then '>' else c }
+          else pure ps)
+      let native := ps.bo == '@' || ps.bo == '^'
+      -- item sizes
+      let digs := ps.s.takeWhile Char.isDigit
+      let ps := { ps with s := ps.s.dropWhile Char.isDigit }
+      let itemsize := if digs.isEmpty then 1 else digitsNat digs
+      -- data types
+      let (value, align, isPadding, ps, itemsize) ← (match ps.s with
+        | 'T' :: '{' :: rest => do
+          let (v, a, ps') ← parseLoop f { ps with s := rest } Acc.init true
+          pure (v, a, false, ps', itemsize)
+        | [] => throw PErr.index
+        | c :: rest =>
+          if (typeChars native).contains c then
+            let (tc, rest') : String × List Char :=
+              if c == 'Z' then
+                (match rest with
+                  | [] => ("Z", [])
+                  | d :: r => (String.ofList [c, d], r))
+              else (c.toString, rest)
+            match lookupType native tc with
+            | none => throw PErr.key
+            | some code =>
+              let flex := tc == "s" || tc == "w" || tc == "x"
+              let sz := if tc == "s" || tc == "x" then itemsize else if tc == "w" then 4 * itemsize
+                else if tc == "c" then 1 else codeSize code
+              let order := if native then '=' else ps.bo
+              pure (D.scalar order code sz, codeAlign code, tc == "x", { ps with s := rest' }, if flex then 1 else itemsize)
+          else if c == 'u' || c == '&' || c == 't' || c == 'X' then throw PErr.notImpl
+          else throw PErr.value)
+      -- native alignment may require padding
+      let (offset, value, extra, common) :=
+        if ps.bo == '@' then
+          let startPad := (align - acc.offset % align) % align
+          let intra := (align - value.size % align) % align
+          let off := acc.offset + startPad
+          let common := Nat.lcm align acc.common
+          if intra != 0 then
+            let bigShape := match shape with
+              | some l => (l.foldl (· * ·) (1 : Int)) > 1
+              | none => false
+            if itemsize > 1 || bigShape then (off, addTrailingPadding value intra, 0, common)
+            else (off, value, intra, common)
+          else (off, value, 0, common)
+        else (acc.offset, value, 0, acc.common)
+      -- convert itemsize to sub-array, then sub-arrays (2)
+      let value := if itemsize != 1 then D.sub [itemsize] value else value
+      let value ← (match shape with
+        | none => pure value
+        | some l => if l.any (· < 0) then throw PErr.value else pure (D.sub (l.map Int.toNat) value))
+      -- field name
+      let (name, ps) ← (match ps.s with
+        | ':' :: rest =>
+          match splitAtChar ':' rest with
+          | none => throw PErr.value
+          | some (nm, r) => pure (some (String.ofList nm), { ps with s := r })
+        | _ => pure (none, ps))
+      let acc' ←
+        if isPadding && name.isNone then
+          pure { acc with offset := offset + value.size + extra, itemsize := offset + value.size + extra, common := common }
+        else
+          if name.isSome && acc.names.contains name then throw PErr.runtime
+          else pure { names := acc.names ++ [name], formats := acc.formats ++ [value], offsets := acc.offsets ++ [offset],
+                      itemsize := offset + value.size + extra, offset := offset + value.size + extra, common := common }
+      parseLoop f ps acc' isSub
+
+/-- `_dtype_from_pep3118`, `_internal.py:627`. -/
+def parseFormat (spec : List Char) : Except PErr D :=
+  match parseLoop (spec.length + 2) { s := spec, bo := '@' } Acc.init false with
+  | .ok (d, _, _) => .ok d
+  | .error e => .error e
+
+/-- `_pep3118_letter_to_type`, `buffer.c:1086`, as a type character and an item size. -/
+def fastLetter (native complex : Bool) : Char → Option (Char × Nat)
+  | '?' => some ('?', 1) | 'b' => some ('b', 1) | 'B' => some ('B', 1)
+  | 'h' => some ('h', 2) | 'H' => some ('H', 2)
+  | 'i' => some ('i', 4) | 'I' => some ('I', 4)
+  | 'l' => some (if native then ('l', 8) else ('i', 4))
+  | 'L' => some (if native then ('L', 8) else ('I', 4))
+  | 'q' => some ('q', 8) | 'Q' => some ('Q', 8)
+  | 'n' => if native then some ('l', 8) else none
+  | 'N' => if native then some ('L', 8) else none
+  | 'e' => some ('e', 2)
+  | 'f' => some (if complex then ('F', 8) else ('f', 4))
+  | 'd' => some (if complex then ('D', 16) else ('d', 8))
+  | 'g' => if native then some (if complex then ('G', 16) else ('g', 8)) else none
+  | _ => none
+
+/-- `_descriptor_from_pep3118_format_fast`, `buffer.c:1002`: one item, with byte order characters in front of it or behind it. -/
+def fastLoop (order : Char) (std : Bool) (seen : Option (Char × Nat)) : List Char → Option D
+  | [] => seen.map fun (c, s) => .scalar order c s
+  | '@' :: r => fastLoop '=' false seen r
+  | '^' :: r => fastLoop '=' false seen r
+  | '<' :: r => fastLoop '<' true seen r
+  | '>' :: r => fastLoop '>' true seen r
+  | '!' :: r => fastLoop '>' true seen r
+  | '=' :: r => fastLoop '=' true seen r
+  | 'Z' :: r =>
+    match r with
+    | [] => none
+    | c :: r' =>
+      if seen.isSome then none
+      else match fastLetter (!std) true c with
+        | none => none
+        | some t => fastLoop order std (some t) r'
+  | c :: r =>
+    if seen.isSome then none
+    else match fastLetter (!std) false c with
+      | none => none
+      | some t => fastLoop order std (some t) r
+
+/-- `NumPyOS_ascii_isspace`. -/
+def isSpaceC (c : Char) : Bool := c == ' ' || (9 ≤ c.toNat && c.toNat ≤ 13)
+
+/-- Whitespace is stripped except inside `:name:`, `buffer.c:942`. -/
+def stripWs : Bool → List Char → List Char
+  | _, [] => []
+  | inName, c :: r =>
+    if c == ':' then c :: stripWs (!inName) r
+    else if inName || !isSpaceC c then c :: stripWs inName r
+    else stripWs inName r
+
+inductive RErr where
+  | format (e : FErr)
+  /-- `ValueError: '...' is not a valid PEP 3118 buffer format string`, wrapping any error of the parser. -/
+  | parse
+  /-- `RuntimeError: Item size ... for PEP 3118 buffer format string ... does not match the dtype ... item size`, `ctors.c:1259`. -/
+  | itemsize
+  deriving DecidableEq, Repr
+
+/-- The dtype of `np.array(memoryview(np.zeros(n, dtype)))`: `_descriptor_from_pep3118_format`, `buffer.c:917`, and then the check of `_array_from_buffer_3118`. -/
+def roundTrip (n : Nat) (d : D) : Except RErr D :=
+  match bufferFormat n d with
+  | .error e => .error (.format e)
+  | .ok f =>
+    let r : Except RErr D :=
+      match fastLoop '=' false none f.toList with
+      | some x => .ok x
+      | none => match parseFormat (stripWs false f.toList) with
+        | .ok x => .ok x
+        | .error _ => .error .parse
+    match r with
+    | .ok x => if x.size == d.size then .ok x else .error .itemsize
+    | .error e => .error e
+
+end Pep3118
+
 end NumpyLean.NpyFormat
