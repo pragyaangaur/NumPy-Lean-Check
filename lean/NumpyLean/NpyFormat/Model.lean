@@ -641,4 +641,62 @@ def readArrayShape (shape : List Int) (fortran : Bool) : Except ReadArrayErr (Li
   | .error .sizeMismatch => throw .mismatch
   | .ok r => pure (if fortran then r.reverse else r)
 
+/-!
+## `np.frombuffer`
+
+`PyArray_FromBuffer`, `_core/src/multiarray/ctors.c:3714`, with the arguments of `array_frombuffer`, `_core/src/multiarray/multiarraymodule.c:2485`.
+-/
+
+inductive FromBufferErr where
+  /-- `count` or `offset` does not fit a `Py_ssize_t`: `OverflowError`, from the argument parser. -/
+  | overflow
+  /-- `cannot create an OBJECT array from memory buffer`, ctors.c:3727. -/
+  | object
+  /-- `itemsize cannot be zero in type`, ctors.c:3733. -/
+  | unsized
+  /-- `offset must be non-negative and no greater than buffer length`, ctors.c:3777. -/
+  | offset
+  /-- `cannot determine count if itemsize is 0`, ctors.c:3793. Unreachable, because an unsized type is rejected first. -/
+  | countUnknown
+  /-- `buffer size must be a multiple of element size`, ctors.c:3800. -/
+  | multiple
+  /-- `buffer is smaller than requested size`, ctors.c:3811. -/
+  | small
+  /-- `array is too big`, from the array constructor. -/
+  | tooBig
+  deriving DecidableEq, Repr
+
+/-- The item size of a dtype code of the tests, or `none` for the object dtype. `S0`, `U0` and `V0` give size zero. -/
+def itemsizeOf (code : String) : Option Nat :=
+  match code.toList with
+  | 'O' :: _ => none
+  | 'b' :: _ => some 1
+  | 'M' :: _ => some 8
+  | 'm' :: _ => some 8
+  | 'U' :: ds => some (4 * (digitsToInt ds).toNat)
+  | _ :: ds => some (digitsToInt ds).toNat
+  | [] => some 0
+
+/--
+`frombuffer(buf, dtype, count, offset)` for a buffer of `len` bytes. The result is the length of the 1-d array. The multiplication `n*itemsize` at ctors.c:3809 is a signed C product and is modelled with `wrap64`, which is what GCC and Clang do on arm64 and x86-64, although the C standard calls it undefined.
+-/
+def frombuffer (len : Nat) (code : String) (count offset : Int) : Except FromBufferErr Int :=
+  if count < intpMin || count > intpMax || offset < intpMin || offset > intpMax then .error .overflow
+  else
+    match itemsizeOf code with
+    | none => .error .object
+    | some 0 => .error .unsized
+    | some itemsize =>
+      if offset < 0 || offset > (len : Int) then .error .offset
+      else
+        let s : Int := (len : Int) - offset
+        let isz : Int := itemsize
+        if count < 0 then
+          if Int.tmod s isz != 0 then .error .multiple else .ok (Int.tdiv s isz)
+        else
+          if s < wrap64 (count * isz) then .error .small
+          else
+            -- The array constructor then checks the size without wrapping, `ctors.c:725` to `757`.
+            if Shape.newArraySizeFits [count] isz == some true then .ok count else .error .tooBig
+
 end NumpyLean.NpyFormat
