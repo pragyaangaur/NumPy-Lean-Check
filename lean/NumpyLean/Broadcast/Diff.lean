@@ -99,6 +99,8 @@ def pErrStr : PErr → String
   | .broadcast => "ERR broadcast"
   | .conv => "ERR conv"
   | .tooBig => "ERR toobig"
+  | .negDim => "ERR negdim"
+  | .assign => "ERR assign"
 
 /-- A section argument is `c:<n>` for an integer or `l:<ints>` for a list of indices. -/
 def parseSections (s : String) : Sections :=
