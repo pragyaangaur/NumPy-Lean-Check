@@ -451,4 +451,295 @@ def squeeze (shape : List Int) (isTuple : Bool) (axes : List Int) : Except AErr 
   let flagged ← if isTuple then multiAxisTuple ndim axes [] else multiAxisInt ndim (axes.headD 0)
   squeezeSelected shape flagged
 
+/-! ## Python slices -/
+
+/-- The clamp that `PySlice_AdjustIndices` applies to one slice bound, for lower bound `lo` and upper bound `hi`. A negative bound counts from the end first. -/
+def adjustBound (n lo hi : Int) (x : Int) : Int :=
+  if x < 0 then (let y := x + n; if y < lo then lo else y)
+  else if x > hi then hi else x
+
+/-- `slice.indices(n)` for a slice with optional start, stop and step. A zero step is a `ValueError`, which is `none` here. -/
+def sliceIndices (n : Int) (start stop step : Option Int) : Option (Int × Int × Int) :=
+  let st := step.getD 1
+  if st == 0 then none
+  else
+    let lo : Int := if st < 0 then -1 else 0
+    let hi : Int := if st < 0 then n - 1 else n
+    let a := match start with | none => (if st < 0 then hi else lo) | some x => adjustBound n lo hi x
+    let b := match stop with | none => (if st < 0 then lo else hi) | some x => adjustBound n lo hi x
+    some (a, b, st)
+
+/-- The elements of Python `range(a, b, s)` for `s ≠ 0`. -/
+def pyRange (a b s : Int) : List Int :=
+  if s > 0 then (if a < b then (List.range (((b - a + s - 1) / s).toNat)).map (fun (k : Nat) => a + s * (k : Int)) else [])
+  else if s < 0 then (if b < a then (List.range (((a - b + (-s) - 1) / (-s)).toNat)).map (fun (k : Nat) => a + s * (k : Int)) else [])
+  else []
+
+/-- The length of `a[st:en]` on a sequence of length `n`, the slice with step 1. -/
+def sliceLen (n st en : Int) : Int :=
+  let a := adjustBound n 0 n st
+  let b := adjustBound n 0 n en
+  if b > a then b - a else 0
+
+/-! ## np.array_split and np.split -/
+
+inductive SplitErr where
+  /-- `ary.shape[axis]` with an axis outside the shape tuple, an `IndexError` (`_shape_base_impl.py:747`, also line 851 for `split`). -/
+  | index
+  /-- "number sections must be larger than 0." (`_shape_base_impl.py:760`). -/
+  | sections
+  /-- "array split does not result in an equal division" (`_shape_base_impl.py:855`). -/
+  | notEqual
+  /-- `N % sections` with `sections = 0` in `split`, a `ZeroDivisionError` (`_shape_base_impl.py:853`). -/
+  | zeroDiv
+  deriving Repr, DecidableEq
+
+/-- The second argument of `array_split` and `split`, either an integer number of sections or a list of indices. -/
+inductive Sections where
+  | count (n : Int)
+  | idx (l : List Int)
+  deriving Repr
+
+/-- Python `tuple[axis]` for a shape tuple, with negative axes counting from the end. -/
+def shapeAt (shape : List Int) (axis : Int) : Option (Nat × Int) :=
+  let nd : Int := shape.length
+  if axis < -nd || axis ≥ nd then none
+  else
+    let k := (if axis < 0 then axis + nd else axis).toNat
+    some (k, shape.getD k 0)
+
+/-- Consecutive pairs of a list. -/
+def consecutive : List Int → List (Int × Int)
+  | a :: b :: rest => (a, b) :: consecutive (b :: rest)
+  | _ => []
+
+/-- Running sums of a list, as `cumsum`. -/
+def cumsum (l : List Int) : List Int := (l.foldl (fun (acc : Int × List Int) x => (acc.1 + x, acc.2 ++ [acc.1 + x])) (0, [])).2
+
+/-- `np.array_split` at `_shape_base_impl.py:720-777`, giving the shape of each section. The cut points are `[0] + indices + [N]` for a list, and the cumulative sizes for an integer. Each section is `sary[st:end]`, a Python slice of length `N` that clamps and counts negative bounds from the end. -/
+def arraySplit (shape : List Int) (axis : Int) : Sections → Except SplitErr (List (List Int))
+  | secs => do
+    let (k, N) ← match shapeAt shape axis with | some r => .ok r | none => .error .index
+    let divPoints : List Int ←
+      match secs with
+      | .idx l => .ok ([0] ++ l ++ [N])
+      | .count n =>
+        if n ≤ 0 then .error .sections
+        else
+          let neach := Int.fdiv N n
+          let extras := Int.fmod N n
+          .ok (cumsum ([0] ++ List.replicate extras.toNat (neach + 1) ++ List.replicate (n - extras).toNat neach))
+    .ok ((consecutive divPoints).map fun (st, en) => shape.set k (sliceLen N st en))
+
+/-- `np.split` at `_shape_base_impl.py:848-856`. With an integer it first checks `N % sections`, which is a `ZeroDivisionError` for 0 and uses Python's sign rules for negative values, and then calls `array_split`. -/
+def npSplit (shape : List Int) (axis : Int) : Sections → Except SplitErr (List (List Int))
+  | .idx l => arraySplit shape axis (.idx l)
+  | .count n => do
+    let (_, N) ← match shapeAt shape axis with | some r => .ok r | none => .error .index
+    if n == 0 then .error .zeroDiv
+    else if Int.fmod N n != 0 then .error .notEqual
+    else arraySplit shape axis (.count n)
+
+/-! ## np.delete and np.insert -/
+
+inductive IErr where
+  /-- `AxisError` from `normalize_axis_index` (`_function_base_impl.py:5298`, `5513`). -/
+  | axis
+  /-- `IndexError`, either the explicit "out of bounds" checks or a failed fancy index. -/
+  | index
+  /-- `ValueError`: a zero slice step, a boolean mask of the wrong shape, or a values array that does not broadcast. -/
+  | value
+  /-- `AttributeError: 'list' object has no attribute 'ndim'` from `obj.ndim` on a Python list of booleans (`_function_base_impl.py:5539`). -/
+  | attr
+  deriving Repr, DecidableEq
+
+/-- The `obj` argument. `mask` is a boolean array and `boolList` is a Python list of booleans. An empty Python list is `list []`, which becomes an integer array. -/
+inductive Obj where
+  | int (i : Int)
+  | slice (start stop step : Option Int)
+  | list (l : List Int)
+  | mask (bs : List Bool)
+  | boolList (bs : List Bool)
+  deriving Repr
+
+/-- Write `vals` into the slots of `new` starting at `lo`. -/
+def writeAt (new : List (Option Int)) (lo : Nat) (vals : List Int) : List (Option Int) :=
+  new.take lo ++ vals.map some ++ new.drop (lo + vals.length)
+
+/-- Read the slots. A slot that was never written would hold uninitialised memory in NumPy, and is shown as `-1`. -/
+def slots (l : List (Option Int)) : List Int := l.map (fun o => o.getD (-1))
+
+/-- Indices of the true entries, `np.flatnonzero`. -/
+def flatNonzero (bs : List Bool) : List Int :=
+  ((bs.zip (List.range bs.length)).filter (fun (b, _) => b)).map (fun (_, i) => (i : Int))
+
+/-- Python `l[i]` for a non-negative or negative index already known to be in range. -/
+def wrapIndex (n i : Int) : Int := if i < 0 then i + n else i
+
+/-- The slice branch of `np.delete` at `_function_base_impl.py:5301-5345`. `arr` is the 1-d array and its length is `N`. -/
+def deleteSlice (arr : List Int) (start stop step : Option Int) : Except IErr (List Int) :=
+  let N : Int := arr.length
+  match sliceIndices N start stop step with
+  | none => .error .value
+  | some (a, b, st) =>
+    let xr := pyRange a b st
+    let numtodel : Int := xr.length
+    if numtodel ≤ 0 then .ok arr
+    else
+      -- Invert if step is negative.
+      let (a, b, st) : Int × Int × Int :=
+        if st < 0 then (xr.getLast?.getD 0, xr.headD 0 + 1, -st) else (a, b, st)
+      let new0 : List (Option Int) := List.replicate (N - numtodel).toNat none
+      -- copy the initial chunk
+      let new1 := if a == 0 then new0 else writeAt new0 0 (arr.take a.toNat)
+      -- copy the end chunk
+      let new2 := if b == N then new1 else writeAt new1 (b - numtodel).toNat (arr.drop b.toNat)
+      -- copy the middle pieces
+      let new3 :=
+        if st == 1 then new2
+        else
+          let seg := (arr.drop a.toNat).take (b - a).toNat
+          let mid := ((seg.zip (List.range seg.length)).filter (fun (_, j) => (j : Int) % st != 0)).map (·.1)
+          writeAt new2 a.toNat mid
+      .ok (slots new3)
+
+/-- Python indexing of `keep[obj,] = False` for an integer array: an index in `[-N, N)` is valid and negative ones count from the end. -/
+def keepMask (N : Int) (obj : List Int) : Except IErr (List Bool) :=
+  if obj.any (fun i => i < -N || i ≥ N) then .error .index
+  else
+    let hit := obj.map (wrapIndex N)
+    .ok ((List.range N.toNat).map fun (k : Nat) => !(hit.contains (k : Int)))
+
+/-- `np.delete(arr, obj)` for a 1-d array at `_function_base_impl.py:5290-5385`. -/
+def deleteObj (arr : List Int) : Obj → Except IErr (List Int)
+  | .slice a b c => deleteSlice arr a b c
+  | o =>
+    let N : Int := arr.length
+    -- A size 1 integer object takes the single value path, as does a Python int.
+    let single : Option Int :=
+      match o with
+      | .int i => some i
+      | .list [i] => some i
+      | _ => none
+    match single with
+    | some i =>
+      if i < -N || i ≥ N then .error .index
+      else
+        let j := wrapIndex N i
+        let new0 : List (Option Int) := List.replicate (N - 1).toNat none
+        let new1 := writeAt new0 0 (arr.take j.toNat)
+        .ok (slots (writeAt new1 j.toNat (arr.drop (j + 1).toNat)))
+    | none =>
+      match o with
+      | .mask bs | .boolList bs =>
+        if (bs.length : Int) != N then .error .value
+        else .ok ((arr.zip bs).filter (fun (_, b) => !b) |>.map (·.1))
+      | .list l => do
+        let keep ← keepMask N l
+        .ok ((arr.zip keep).filter (fun (_, b) => b) |>.map (·.1))
+      | _ => .error .value
+
+/-- Stable argsort followed by `indices[order] += arange(numnew)` at `_function_base_impl.py:5588-5589`. Each index gains its rank in the stable sort. -/
+def addRanks (idx : List Int) : List Int :=
+  let tagged := (idx.zip (List.range idx.length)).map (fun (v, p) => (v, (p : Int)))
+  let sorted := sortPairs tagged
+  let ranked := (sorted.zip (List.range sorted.length)).map (fun ((v, p), r) => (p, v + (r : Int)))
+  (List.range idx.length).map fun p => (ranked.find? (fun (q, _) => q == (p : Int))).map (·.2) |>.getD 0
+
+/-- `np.insert(arr, obj, values)` for a 1-d array at `_function_base_impl.py:5506-5600`. `values` is the list of the values, and a scalar is a list of one. The single index path is taken when `obj` selects exactly one index. -/
+def insertObj (arr : List Int) (obj : Obj) (values : List Int) : Except IErr (List Int) :=
+  let N : Int := arr.length
+  let indices : Except IErr (List Int) :=
+    match obj with
+    | .slice a b c => match sliceIndices N a b c with
+      | none => .error .value
+      | some (a, b, st) => .ok (pyRange a b st)
+    | .int i => .ok [i]
+    | .list l => .ok l
+    | .mask bs => .ok (flatNonzero bs)
+    | .boolList _ => .error .attr
+  match indices with
+  | .error e => .error e
+  | .ok ind =>
+    match ind with
+    | [index] =>
+      if index < -N || index > N then .error .index
+      else
+        let index := wrapIndex N index
+        let numnew : Int := values.length
+        let new0 : List (Option Int) := List.replicate (N + numnew).toNat none
+        let new1 := writeAt new0 0 (arr.take index.toNat)
+        let new2 := writeAt new1 index.toNat values
+        .ok (slots (writeAt new2 (index + numnew).toNat (arr.drop index.toNat)))
+    | _ =>
+      -- `indices[indices < 0] += N`, then the ranks. There is no range check here.
+      let ind := ind.map (fun i => if i < 0 then i + N else i)
+      let numnew : Int := ind.length
+      let ind := addRanks ind
+      let newlen : Int := N + numnew
+      if ind.any (fun i => i < -newlen || i ≥ newlen) then .error .index
+      else
+        let pos := ind.map (wrapIndex newlen)
+        let free := (List.range newlen.toNat).filter (fun (k : Nat) => !(pos.contains (k : Int)))
+        -- `new[indices] = values`, which broadcasts a length one `values`.
+        if (values.length : Int) != numnew && values.length != 1 then .error .value
+        -- `new[old_mask] = arr`, which broadcasts a length one `arr`.
+        else if (free.length : Int) != N && N != 1 then .error .value
+        else
+          let vals := if values.length == 1 then List.replicate pos.length (values.headD 0) else values
+          let new1 := (pos.zip vals).foldl (fun (new : List (Option Int)) (p, v) => new.set p.toNat (some v)) (List.replicate newlen.toNat none)
+          let src := if N == 1 then List.replicate free.length (arr.headD 0) else arr
+          .ok (slots ((free.zip src).foldl (fun (new : List (Option Int)) (p, v) => new.set p (some v)) new1))
+
+/-! ## np.pad width normalisation, constant mode -/
+
+inductive PErr where
+  /-- "`pad_width` must be of integral type." (`_arraypad_impl.py:790`). -/
+  | type
+  /-- "index can't contain negative values" (`_arraypad_impl.py:517`, `524`, `528`). -/
+  | negative
+  /-- `np.broadcast_to` of the width array to `(ndim, 2)` fails (`_arraypad_impl.py:533`). -/
+  | broadcast
+  /-- "Maximum allowed dimension exceeded", a padded length outside `npy_intp`, from `np.empty`. -/
+  | conv
+  /-- "array is too big" from `np.empty` of the padded shape. -/
+  | tooBig
+  deriving Repr, DecidableEq
+
+/-- Broadcast a width array of shape `ps` and flat data `d` to `(ndim, 2)` and read it as `ndim` pairs, as `np.broadcast_to(x, (ndim, 2)).tolist()` at line 533. -/
+def broadcastPairs (ndim : Nat) (ps : List Int) (d : List Int) : Except PErr (List (Int × Int)) :=
+  if ps.length > 2 then .error .broadcast
+  else
+    let (a, b) : Int × Int := match ps with
+      | [] => (1, 1)
+      | [b] => (1, b)
+      | [a, b] => (a, b)
+      | _ => (1, 1)
+    if (a != 1 && a != ndim) || (b != 1 && b != 2) then .error .broadcast
+    else
+      .ok ((List.range ndim).map fun i =>
+        let get (j : Nat) : Int := d.getD ((if a == 1 then 0 else i) * b.toNat + (if b == 1 then 0 else j)) 0
+        (get 0, get 1))
+
+/-- `_as_pairs(x, ndim, as_index=True)` at `_arraypad_impl.py:471-534` for an integer array of shape `ps` with flat data `d`. The rounding at line 506 does nothing for integers. -/
+def asPairs (ndim : Nat) (ps : List Int) (d : List Int) : Except PErr (List (Int × Int)) :=
+  let size : Int := ps.foldl (· * ·) 1
+  if ps.length < 3 && size == 1 then
+    if d.headD 0 < 0 then .error .negative else .ok (List.replicate ndim (d.headD 0, d.headD 0))
+  else if ps.length < 3 && size == 2 && ps != [2, 1] then
+    if d.any (· < 0) then .error .negative else .ok (List.replicate ndim (d.headD 0, d.getD 1 0))
+  else if d.any (· < 0) then .error .negative
+  else broadcastPairs ndim ps d
+
+/-- `np.pad(array, pad_width)` in constant mode, the shape of the result. `pad_width` is built from a Python list, so it has integer dtype only when it is non-empty and every entry fits `npy_intp` (a larger entry makes the dtype unsigned, float or object). `padded = np.empty(new_shape)` with a float64 array of item size 8 then checks the shape like `PyArray_NewFromDescr` does, using `ctorCheck`. -/
+def padShape (shape : List Int) (ps : List Int) (d : List Int) : Except PErr (List Int) :=
+  if d.isEmpty || d.any (fun x => !(inIntp x)) then .error .type
+  else do
+    let pairs ← asPairs shape.length ps d
+    let new := (shape.zip pairs).map fun (s, (l, r)) => l + s + r
+    if new.any (fun x => !(inIntp x)) then .error .conv
+    else match ctorCheck new 8 with
+      | .ok () => .ok new
+      | .error _ => .error .tooBig
+
 end NumpyLean.Broadcast
