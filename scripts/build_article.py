@@ -16,10 +16,9 @@ CSS = """
 @font-face { font-family: "Latin Modern"; font-weight: 400; font-display: swap; src: url("FONTS/LM-regular.woff2") format("woff2"); }
 @font-face { font-family: "Latin Modern"; font-style: italic; font-weight: 400; font-display: swap; src: url("FONTS/LM-italic.woff2") format("woff2"); }
 @font-face { font-family: "Latin Modern"; font-weight: 700; font-display: swap; src: url("FONTS/LM-bold.woff2") format("woff2"); }
-:root { --bg: #fcfcfa; --ink: #1b1b1a; --muted: #5b5a56; --rule: #e2e0da; --code: #f2f1ec; --link: #1f5fbf; }
-@media (prefers-color-scheme: dark) { :root { --bg: #181817; --ink: #ecebe6; --muted: #b3b1a8; --rule: #33322f; --code: #242422; --link: #7fb0f5; } }
+:root { --bg: #fdfdfc; --ink: #111210; --muted: #4a4c46; --rule: #d9d9d3; --code: #f2f2ee; --link: #1f5fbf; color-scheme: light; }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 20px/1.6 "Latin Modern", Georgia, serif; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 20px/1.6 "Latin Modern", "CMU Serif", "Computer Modern", Georgia, serif; text-rendering: optimizeLegibility; font-kerning: normal; hyphens: auto; }
 main { max-width: 860px; margin: 0 auto; padding: 56px 22px 80px; }
 h1 { font-size: 2.05em; line-height: 1.2; margin: 0 0 12px; }
 h2 { font-size: 1.3em; margin: 2em 0 0.5em; }
@@ -37,8 +36,8 @@ footer { margin-top: 3em; padding-top: 1em; border-top: 1px solid var(--rule); c
 @media (max-width: 600px) { body { font-size: 18px; } h1 { font-size: 1.7em; } }
 """.replace("FONTS/", FONTS)
 
-FIGURE = """<figure><picture><source media="(prefers-color-scheme: dark)" srcset="images/pipeline-dark.svg"><img src="images/pipeline-light.svg" alt="The five steps: read the C, mirror it in Lean, race the two, prove or refute, file the bug"></picture></figure>"""
-CHART = """<figure><picture><source media="(prefers-color-scheme: dark)" srcset="images/findings-dark.svg"><img src="images/findings-light.svg" alt="The 55 bug records by area and by whether NumPy already knew about them"></picture></figure>"""
+FIGURE = """<figure><picture><img src="images/pipeline-light.svg" alt="The five steps: read the C, mirror it in Lean, race the two, prove or refute, file the bug"></picture></figure>"""
+CHART = """<figure><picture><img src="images/findings-light.svg" alt="The 55 bug records by area and by whether NumPy already knew about them"></picture></figure>"""
 
 
 def render(md):
@@ -63,6 +62,7 @@ def main():
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
 <title>{html.escape(title)} | Pragyaan Gaur</title>
 <meta name="description" content="{html.escape(desc)}">
 <meta name="author" content="Pragyaan Gaur">
