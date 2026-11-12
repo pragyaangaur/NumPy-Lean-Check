@@ -1,0 +1,11 @@
+id: npyformat-read-header-key-sort-type-error
+title: read_array_header raises TypeError instead of ValueError when the header keys cannot be sorted
+area: NpyFormat
+kind: wrong-error
+severity: low
+numpy_version: 2.5.4
+source: lib/_format_impl.py:681
+property: NumpyLean.NpyFormat.readHeader_keySort_refuted
+summary: >
+  When the keys of the header dictionary are not exactly `descr`, `fortran_order` and `shape`, the code builds the message with `keys = sorted(d.keys())` (line 681) before it raises `ValueError("Header does not contain the correct keys")`. If the keys mix types that Python cannot order, as in `{'a': 1, 1: 2}` or `{'descr': 1, None: 2}`, `sorted` raises `TypeError: '<' not supported between instances of 'int' and 'str'` and the intended `ValueError` is never raised. The documentation says "Raises ValueError If the data is invalid". The same function also lets `TypeError: unhashable type` through from `ast.literal_eval` for a key such as `[1]`, which the `ast` documentation lists as a possible error but which `numpy.lib.format` does not document.
+upstream: not searched
