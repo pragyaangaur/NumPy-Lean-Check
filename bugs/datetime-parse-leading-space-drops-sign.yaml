@@ -8,4 +8,4 @@ source: _core/src/multiarray/datetime_strings.c:398
 property: NumpyLean.Datetime.parse_leading_space_keeps_sign_refuted
 summary: >
   `np.datetime64(' -2000')` is the year 2000 and `np.datetime64(' -2000-01-01')` is 2000-01-01, while `np.datetime64('-2000')` is the year -2000. `NpyDatetime_ParseISO8601Datetime` first skips leading whitespace (datetime_strings.c:373) and then skips a '-' or '+' (datetime_strings.c:379), so the string is accepted, but the negation at datetime_strings.c:398 tests `str[0] == '-'`, the first character of the whole string, instead of the sign character it skipped. The year is therefore silently made positive. The function comment calls the format ISO 8601 with negative years allowed, and the leading whitespace is accepted on purpose, so the two features together give a wrong date with no error.
-upstream: not searched
+upstream: NEW, searched open and closed issues and PRs on 12 Nov 2026, no issue or PR mentions whitespace before a negative year, main still tests str[0] == '-' in datetime_strings.c
