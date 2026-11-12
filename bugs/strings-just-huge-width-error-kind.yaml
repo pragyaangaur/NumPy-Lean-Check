@@ -1,0 +1,11 @@
+id: strings-just-huge-width-error-kind
+title: center, ljust, rjust and zfill with a huge width raise TypeError on S and U and MemoryError on StringDType
+area: Strings
+kind: wrong-error
+severity: low
+numpy_version: 2.5.4
+source: _core/strings.py:753
+property: NumpyLean.Strings.center_huge_width_error_kinds
+summary: >
+  For `S` and `U` the Python wrapper builds the output dtype from the width (`out_dtype = f"{a.dtype.char}{width.max()}"`), and `np.dtype` refuses an item size above `INT_MAX` with `TypeError: data type 'U4294967296' not understood`. For `StringDType` the loop calls the allocator and raises `MemoryError: Failed to allocate string in _center`, or `OverflowError` when the size overflows. `str.center` raises `MemoryError` or `OverflowError`. The error for `S` and `U` is a TypeError that blames the dtype for what is a size that is too large, and the three kinds disagree.
+upstream: not searched
