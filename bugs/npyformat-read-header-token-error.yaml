@@ -1,0 +1,11 @@
+id: npyformat-read-header-token-error
+title: read_array_header raises tokenize.TokenError instead of ValueError for a header with an unclosed bracket or string
+area: NpyFormat
+kind: wrong-error
+severity: low
+numpy_version: 2.5.4
+source: lib/_format_impl.py:661
+property: NumpyLean.NpyFormat.readHeader_tokenError_refuted
+summary: >
+  The docstrings of `read_array_header_1_0` and `read_array_header_2_0` say "Raises ValueError If the data is invalid", and `read_array` repeats it. For a header such as `{'descr': '<f8', 'fortran_order': False, 'shape': (3,), ` (a file cut off before the closing brace) `ast.literal_eval` raises `SyntaxError`. For versions up to 2.0 the code then calls `_filter_header` (line 661) for the Python 2 `L` suffix, and its `tokenize.generate_tokens` raises `tokenize.TokenError` ("unexpected EOF in multi-line statement"). The call sits inside the `except SyntaxError` handler and outside the inner `try`, so the error is not turned into the `ValueError("Cannot parse header")` of line 665 and escapes as `TokenError`, which is not a subclass of `ValueError`. An unterminated string gives the same. Callers that catch `ValueError` for corrupt files, as `np.load` users commonly do, miss it. Version 3.0 does not use the filter and raises the documented `ValueError`.
+upstream: not searched
