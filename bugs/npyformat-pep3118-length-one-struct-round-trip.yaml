@@ -1,0 +1,11 @@
+id: npyformat-pep3118-length-one-struct-round-trip
+title: np.array(memoryview(a)) raises RuntimeError for a length one array of a packed structured dtype
+area: NpyFormat
+kind: inconsistent
+severity: medium
+numpy_version: 2.5.4
+source: _core/src/multiarray/buffer.c:141
+property: NumpyLean.NpyFormat.format_depends_on_length_refuted
+summary: >
+  For `dt = np.dtype([('a', 'i4'), ('b', 'i1')])`, a packed dtype of 5 bytes, `memoryview(np.zeros(1, dt)).format` is `T{i:a:b:b:}` while the format of `np.zeros(2, dt)` is `T{=i:a:b:b:}`, and `np.array(memoryview(np.zeros(1, dt)))` raises `RuntimeError: Item size 5 for PEP 3118 buffer format string T{i:a:b:b:} does not match the dtype V item size 8` where the array of length two round trips. The cause is `_is_natively_aligned_at` (buffer.c:141): for a leaf inside a structure it checks the offset, the item size of the leaf and the stride, but the stride only when the length is above one (buffer.c:171). For length one the fields at offsets 0 and 4 count as natively aligned and the writer emits no byte order character, which means native mode, and in native mode PEP 3118 and the `struct` module pad the size of the structure to its largest alignment. The reader does that padding (`_internal.py:763`), gets 8 bytes and the item size check at ctors.c:1247 fails. The same happens with a packed `f8` followed by `i1`, with `O`, and for any packed structure whose size is not a multiple of the largest alignment of its fields. The format string of one dtype therefore depends on the length of the array, and the shorter array cannot be read back by NumPy itself.
+upstream: RELATED, searched open and closed issues and pull requests on 12 Nov 2026, closest is https://github.com/numpy/numpy/issues/7797 (open, round trip of structured dtypes with trailing padding fails with the same item size check, different cause), main has the same code
