@@ -996,6 +996,13 @@ def addTrailingPadding (v : D) (pad : Nat) : D :=
   | .struct n fs => .struct (n + pad) fs
   | _ => .struct (v.size + pad) [("f0", 0, v)]
 
+/-- `np.dtype((value, shape))`. A negative dimension raises `ValueError` ("dimension smaller then zero"). So does a base that is not structured and has item size zero, because `np.dtype(('V0', (2,)))` takes the tuple as the form `(type, itemsize)` and finds no valid item size ("invalid itemsize in generic type tuple"); a structured base of size zero is fine. -/
+def mkSub (shape : List Int) (value : D) : Except PErr D :=
+  if shape.any (· < 0) then throw PErr.value
+  else match value with
+    | .struct _ _ => pure (D.sub (shape.map Int.toNat) value)
+    | _ => if value.size == 0 then throw PErr.value else pure (D.sub (shape.map Int.toNat) value)
+
 /-- `_fix_names`, `_internal.py:773`. -/
 def fixNames : List String → List (Option String) → List String
   | done, [] => done
@@ -1088,10 +1095,10 @@ def parseLoop : Nat → PS → Acc → Bool → Except PErr (D × Nat × PS)
           else (off, value, 0, common)
         else (acc.offset, value, 0, acc.common)
       -- convert itemsize to sub-array, then sub-arrays (2)
-      let value := if itemsize != 1 then D.sub [itemsize] value else value
+      let value ← if itemsize != 1 then mkSub [(itemsize : Int)] value else pure value
       let value ← (match shape with
         | none => pure value
-        | some l => if l.any (· < 0) then throw PErr.value else pure (D.sub (l.map Int.toNat) value))
+        | some l => mkSub l value)
       -- field name
       let (name, ps) ← (match ps.s with
         | ':' :: rest =>
