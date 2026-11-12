@@ -319,4 +319,167 @@ theorem squeeze_axis_in_range_refuted :
     squeeze [] false [-1] = .ok [] ∧ squeeze [] true [0] = .error .axis := by
   decide
 
+/-! ## np.array_split and np.split -/
+
+/-- The length of each piece of a split of a 1-d array of length `N`. -/
+def pieceLens (r : Except SplitErr (List (List Int))) : Option (List Int) := r.toOption.map (·.map (·.headD 0))
+
+def equalSplitOk : Nat × Nat → Bool
+  | (N, n) =>
+    match pieceLens (arraySplit [N] 0 (.count (n : Int))) with
+    | some l => l.length == n && l.foldl (· + ·) 0 == (N : Int) && (l.foldl max 0 - l.foldl min (N : Int) ≤ 1)
+    | none => n == 0
+
+def equalSplitCases : List (Nat × Nat) :=
+  (List.range 13).flatMap fun (N : Nat) => (List.range 15).map fun (n : Nat) => (N, n)
+
+/-- PROP broadcast.array_split.integer_sections_balanced : PROVEN
+Source: the `array_split` docstring, "For an array of length l that should be split into n sections, it returns l % n sub-arrays of size l//n + 1 and the rest of size l//n." Checked for every length up to 12 and every number of sections from 0 to 14 (0 is the `ValueError`): there are `n` pieces, their lengths add up to `N` and differ by at most one. Uses `native_decide`, which trusts the compiler. -/
+theorem array_split_balanced : equalSplitCases.all equalSplitOk = true := by
+  native_decide
+
+/-- Every non-decreasing list of up to three indices between 0 and `N`. -/
+def sortedIdx (N : Nat) : List (List Int) :=
+  let r := (List.range (N + 1)).map Int.ofNat
+  [[]] ++ r.map (fun a => [a]) ++ r.flatMap (fun a => r.filterMap fun b => if a ≤ b then some [a, b] else none) ++
+    r.flatMap (fun a => r.flatMap fun b => r.filterMap fun c => if a ≤ b && b ≤ c then some [a, b, c] else none)
+
+def sortedSplitOk : Nat × List Int → Bool
+  | (N, l) =>
+    match pieceLens (arraySplit [N] 0 (.idx l)) with
+    | some p => p.length == l.length + 1 && p.foldl (· + ·) 0 == (N : Int)
+    | none => false
+
+def sortedSplitCases : List (Nat × List Int) :=
+  (List.range 7).flatMap fun (N : Nat) => (sortedIdx N).map fun l => (N, l)
+
+/-- PROP broadcast.array_split.sorted_indices_partition : PROVEN
+Source: the `split` docstring, "If `indices_or_sections` is a 1-D array of sorted integers, the entries indicate where along `axis` the array is split." For every non-decreasing list of up to three indices inside `[0, N]` and every length up to 6, the pieces add up to the whole axis, one piece more than there are indices. Uses `native_decide`. -/
+theorem array_split_sorted_partition : sortedSplitCases.all sortedSplitOk = true := by
+  native_decide
+
+/-- PROP broadcast.array_split.unsorted_indices_partition : REFUTED
+Source: the `split` docstring asks for "a 1-D array of sorted integers", so this behaviour is outside the documented contract and has no bug record. `np.array_split(np.arange(5), [3, 1])` returns pieces of lengths 3, 0 and 4, which add up to 7, because each piece is the plain slice `[3:1]` of the axis and elements 1 and 2 appear twice. -/
+theorem array_split_unsorted_refuted :
+    pieceLens (arraySplit [5] 0 (.idx [3, 1])) = some [3, 0, 4] := by
+  decide
+
+def equalNpSplitOk : Nat × Int → Bool
+  | (N, n) =>
+    match pieceLens (npSplit [N] 0 (.count n)) with
+    | some l => l.all (· == l.headD 0) && (N : Int) % n == 0
+    | none => true
+
+def equalNpSplitCases : List (Nat × Int) :=
+  (List.range 13).flatMap fun (N : Nat) => ((List.range 20).map fun (n : Nat) => (N, (n : Int) - 5))
+
+/-- PROP broadcast.split.success_means_equal_division : PROVEN
+Source: the `split` docstring, "Raises ValueError if `indices_or_sections` is given as an integer, but a split does not result in equal division." Whenever `np.split` with an integer succeeds, all pieces have the same length and `N` is a multiple of the number of sections. Checked for lengths up to 12 and sections from -5 to 14. Uses `native_decide`. -/
+theorem split_equal_division : equalNpSplitCases.all equalNpSplitOk = true := by
+  native_decide
+
+/-- PROP broadcast.split.zero_sections_error_kind : REFUTED
+Source: `array_split` raises `ValueError` "number sections must be larger than 0." (`_shape_base_impl.py:760`) and the `split` docstring documents only `ValueError`. `np.split(np.arange(4), 0)` raises `ZeroDivisionError` instead, from the check `N % sections` at line 853 that runs before `array_split` is called. Bug record `broadcast-split-zero-sections-zerodivision`. -/
+theorem split_zero_sections_refuted :
+    npSplit [4] 0 (.count 0) = .error .zeroDiv ∧ arraySplit [4] 0 (.count 0) = .error .sections := by
+  decide
+
+/-! ## np.delete and np.insert -/
+
+def deleteSliceOk : Nat × Option Int × Option Int × Option Int → Bool
+  | (N, a, b, c) =>
+    let arr := (List.range N).map Int.ofNat
+    match deleteSlice arr a b c, sliceIndices N a b c with
+    | .ok r, some (x, y, z) => r == arr.filter (fun v => !((pyRange x y z).contains v))
+    | .error _, none => true
+    | _, _ => false
+
+def deleteSliceCases : List (Nat × Option Int × Option Int × Option Int) :=
+  let bounds : List (Option Int) := none :: ((List.range 19).map fun (k : Nat) => some ((k : Int) - 9))
+  let steps : List (Option Int) := none :: ((List.range 9).map fun (k : Nat) => some ((k : Int) - 4))
+  (List.range 8).flatMap fun (N : Nat) => bounds.flatMap fun a => bounds.flatMap fun b => steps.map fun c => (N, a, b, c)
+
+/-- PROP broadcast.delete.slice_removes_exactly_the_slice : PROVEN
+Source: the `delete` docstring, "For a one dimensional array, this returns those entries not returned by `arr[obj]`." The slice branch copies an initial chunk, an end chunk and, for steps other than 1, the kept middle elements (`_function_base_impl.py:5301-5345`). Checked for lengths up to 7, start and stop from -9 to 9 or `None`, and steps from -4 to 4 or `None`: the result is the array without the elements of the slice, and a zero step is the only error. Uses `native_decide`. -/
+theorem delete_slice_complement : deleteSliceCases.all deleteSliceOk = true := by
+  native_decide
+
+def deleteIntOk : Nat × Int → Bool
+  | (N, i) =>
+    let arr := (List.range N).map Int.ofNat
+    match deleteObj arr (.int i) with
+    | .ok r => !(i < -(N : Int) || i ≥ N) && r == arr.filter (fun v => v != wrapIndex N i)
+    | .error .index => i < -(N : Int) || i ≥ N
+    | .error _ => false
+
+/-- PROP broadcast.delete.single_index : PROVEN
+Source: the `delete` docstring and the single value path at `_function_base_impl.py:5352-5368`. For every length up to 7 and every index from -9 to 9, `np.delete(a, i)` removes the element at `i` (counting from the end when negative) and an index outside `[-N, N)` is an `IndexError`. -/
+theorem delete_single_index : ((List.range 8).flatMap fun (N : Nat) => (List.range 19).map fun (k : Nat) => (N, (k : Int) - 9)).all deleteIntOk = true := by
+  decide
+
+def insertSingleOk : Nat × Int × List Int → Bool
+  | (N, i, v) =>
+    let arr := (List.range N).map Int.ofNat
+    insertObj arr (.list [i]) v == insertObj arr (.int i) v
+
+/-- PROP broadcast.insert.list_of_one_matches_scalar : PROVEN
+Source: the `insert` docstring, "Support for multiple insertions when `obj` is a single scalar or a sequence with one element". On a 1-d array `np.insert(a, [i], v)` and `np.insert(a, i, v)` give the same result or the same error, for lengths up to 5, indices from -8 to 8 and value lists of length 0 to 3. Uses `native_decide`. -/
+theorem insert_list_of_one_matches_scalar :
+    ((List.range 6).flatMap fun (N : Nat) => (List.range 17).flatMap fun (k : Nat) => (List.range 4).map fun (m : Nat) =>
+      (N, (k : Int) - 8, (List.range m).map fun (j : Nat) => (100 + j : Int))).all insertSingleOk = true := by
+  native_decide
+
+/-- PROP broadcast.insert.out_of_range_index_rejected : REFUTED
+Source: `insert` raises `IndexError` for an index outside `[-N, N]` on the single index path (`_function_base_impl.py:5555-5558`), and the docstring describes a list as "similar to calling insert multiple times". On the multiple index path there is no range check, only `indices[indices < 0] += N` at line 5586 and a fancy index that wraps negative numbers. `np.insert(np.arange(3), -5, 9)` raises, while `np.insert(np.arange(3), [-5, 1], 9)` returns `[0, 1, 9, 9, 2]`, silently treating -5 as a valid position. Bug record `broadcast-insert-multiple-negative-out-of-range`. -/
+theorem insert_out_of_range_refuted :
+    insertObj [0, 1, 2] (.int (-5)) [9] = .error .index ∧ insertObj [0, 1, 2] (.list [-5, 1]) [9] = .ok [0, 1, 9, 9, 2] := by
+  decide
+
+/-- PROP broadcast.insert.bool_list_accepted : REFUTED
+Source: the `insert` docstring lists `obj` as "slice, int, array-like of ints or bools" and says boolean indices are a mask. `np.insert(np.arange(3), np.array([True, False, True]), 9)` works, but the same mask as a Python list raises `AttributeError: 'list' object has no attribute 'ndim'`, because line 5539 reads `obj.ndim` instead of `indices.ndim`. Bug record `broadcast-insert-bool-list-attribute-error`. -/
+theorem insert_bool_list_refuted :
+    insertObj [0, 1, 2] (.mask [true, false, true]) [9] = .ok [9, 0, 1, 9, 2] ∧
+    insertObj [0, 1, 2] (.boolList [true, false, true]) [9] = .error .attr := by
+  decide
+
+/-- PROP broadcast.insert.mask_length_checked : REFUTED
+Source: `delete` raises `ValueError` when a boolean mask does not match the axis length (`_function_base_impl.py:5372-5376`), and the `insert` docstring describes a boolean `obj` as a mask in the same words. `insert` has no such check: `np.insert(np.arange(3), np.array([False] * 5), 9)` returns `[0, 1, 2]` and a five element mask `[True, False, False, False, False]` inserts before element 0, where `np.delete` raises on both. The mask is only turned into indices by `np.flatnonzero` at line 5540. Bug record `broadcast-insert-bool-mask-length-unchecked`. -/
+theorem insert_mask_length_refuted :
+    insertObj [0, 1, 2] (.mask [false, false, false, false, false]) [9] = .ok [0, 1, 2] ∧
+    deleteObj [0, 1, 2] (.mask [false, false, false, false, false]) = .error .value := by
+  decide
+
+/-! ## np.pad -/
+
+def padScalarOk : List Int × Int → Bool
+  | (shape, w) => padShape shape [] [w] == .ok (shape.map (· + 2 * w))
+
+def padShapes : List (List Int) :=
+  let r : List Int := [0, 1, 2, 3]
+  [[]] ++ r.map (fun a => [a]) ++ r.flatMap (fun a => r.map fun b => [a, b]) ++
+    r.flatMap (fun a => r.flatMap fun b => r.map fun c => [a, b, c])
+
+/-- PROP broadcast.pad.scalar_width : PROVEN
+Source: the `pad` docstring, "`(pad,)` or int is a shortcut for before = after = pad width for all axes." For every shape of up to three axes with lengths 0 to 3 and every width from 0 to 5, a scalar width adds twice the width to every axis. Uses `native_decide`, which trusts the compiler, because `decide` reaches the recursion limit. -/
+theorem pad_scalar_width : (padShapes.flatMap fun s => (List.range 6).map fun (w : Nat) => (s, (w : Int))).all padScalarOk = true := by
+  native_decide
+
+def padColumnOk : List Int → Bool
+  | shape =>
+    let w := (List.range shape.length).map fun (k : Nat) => (k : Int) + 1
+    padShape shape [shape.length, 1] w == .ok ((shape.zip w).map fun (s, x) => s + 2 * x)
+
+/-- PROP broadcast.pad.column_of_widths : PROVEN
+Source: the comment at `_arraypad_impl.py:520-524`, "each dimension has a single value which should be broadcasted to a pair, e.g. [[1], [2]] -> [[1, 1], [2, 2]] not [[1, 2], [1, 2]]". For shapes of up to three axes the width array of shape `(ndim, 1)` pads axis `k` by `w[k]` on both sides. Shapes of fewer than two axes are left out. -/
+theorem pad_column_of_widths : (padShapes.filter (fun s => s.length ≥ 2)).all padColumnOk = true := by
+  decide
+
+/-- PROP broadcast.pad.large_scalar_width_error : REFUTED
+Source: `pad` should reject a width that makes the array impossibly large with the error that `np.empty` gives for the shape, as the nested form does. A scalar or pair width reaches `_pad_simple` as `intp` scalars (`_arraypad_impl.py:519`, `529`), so `left + size + right` at line 111 wraps around in 64 bits. `np.pad(np.zeros((4, 4)), 2**63 - 1)` raises "could not broadcast input array from shape (4,4) into shape (0,0)" and `np.pad(np.zeros(1), 2**63 - 1)` raises "negative dimensions are not allowed", while the same widths as `[[2**63-1, 2**63-1], [2**63-1, 2**63-1]]` give "Maximum allowed dimension exceeded". Every case still raises `ValueError`, so only the message is wrong. Bug record `broadcast-pad-scalar-width-wraps`. -/
+theorem pad_large_width_refuted :
+    padShape [4, 4] [] [2 ^ 63 - 1] = .error .assign ∧
+    padShape [1] [] [2 ^ 63 - 1] = .error .negDim ∧
+    padShape [4, 4] [2, 2] [2 ^ 63 - 1, 2 ^ 63 - 1, 2 ^ 63 - 1, 2 ^ 63 - 1] = .error .conv := by
+  decide
+
 end NumpyLean.Broadcast
