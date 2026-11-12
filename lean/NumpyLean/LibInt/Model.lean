@@ -586,4 +586,105 @@ def fillDiagonal (shape : List Nat) (wrap : Bool) : Except FillDiagErr (List Nat
       let step := 1 + cumprodSum shape
       .ok ((List.range ((size + step - 1) / step)).map (· * step))
 
+/-! ## histogram with integer data, an integer number of bins and an optional integer range
+
+Floating point is used here only through IEEE operations (`+`, `-`, `*`, `/`, comparisons, truncation), which Lean's `Float` computes exactly as C does. Every conversion from an integer to a double goes through `roundInt`, which rounds to nearest with ties to even as the C cast and `PyLong_AsDouble` do.
+-/
+
+/-- The double of an integer, as a Lean `Float`. -/
+def fOfInt (z : Int) : Float :=
+  let r := roundInt z
+  if r < 0 then -(Float.ofNat r.natAbs) else Float.ofNat r.natAbs
+
+/-- An outer bin edge: an integer when it comes from a Python int or a NumPy integer scalar, a double after `first_edge - 0.5`. -/
+inductive Edge where
+  | int (z : Int)
+  | flt (f : Float)
+
+def Edge.toF : Edge → Float
+  | .int z => fOfInt z
+  | .flt f => f
+
+inductive HistErr where
+  /-- `ValueError` "`bins` must be positive, when an integer" at `_histograms_impl.py:423`. -/
+  | bins
+  /-- `ValueError` "max must be larger than min in range parameter." at `_histograms_impl.py:306`. -/
+  | range
+  /-- `ValueError` "Too many bins for data range." at `_histograms_impl.py:449`. -/
+  | tooMany
+  /-- `OverflowError` "Python int too large to convert to C long" from `_unsigned_subtract` at `_histograms_impl.py:352`, when a Python int of the range does not fit `int64`. -/
+  | overflow
+  /-- `IndexError` from `bin_edges[indices]` at `_histograms_impl.py:858` for an index beyond the last edge. -/
+  | index
+  /-- `ValueError` "'list' argument must have no negative elements" from `np.bincount` at `_histograms_impl.py:872`. -/
+  | negIndex
+  deriving Repr, DecidableEq
+
+/-- `_get_outer_edges` at `_histograms_impl.py:298-325` for integer data. An empty array without a range gives 0 and 1, and equal edges are widened by 0.5 on each side. -/
+def outerEdges (data : List Int) (rng : Option (Int × Int)) : Except HistErr (Edge × Edge) := do
+  let (f, l) ← match rng with
+    | some (a, b) => if a > b then throw .range else pure (a, b)
+    | none => if data.isEmpty then pure ((0 : Int), (1 : Int)) else pure (data.foldl min (data.headD 0), data.foldl max (data.headD 0))
+  if f == l then return (.flt (fOfInt f - 0.5), .flt (fOfInt l + 0.5))
+  return (.int f, .int l)
+
+/-- `np.linspace(first, last, n + 1, dtype=float64)` at `numpy/_core/function_base.py`, with `div = n`: `delta` is the difference of the doubles, `y = arange * step + start`, and the last element is set to the stop. A zero step takes the denormal branch. -/
+def linspaceEdges (first last : Edge) (n : Nat) : List Float :=
+  let fs := first.toF
+  let fl := last.toF
+  let delta := fl - fs
+  let div := n.toFloat
+  let step := delta / div
+  let y := (List.range (n + 1)).map fun i =>
+    let yi := i.toFloat
+    (if step == 0 then yi / div * delta else yi * step) + fs
+  y.set n fl
+
+/-- The bin edges of `_get_bin_edges` at `_histograms_impl.py:416-452` for an integer `bins`, which is also what `histogram_bin_edges` returns. -/
+def histEdges (data : List Int) (bins : Int) (rng : Option (Int × Int)) : Except HistErr (Edge × Edge × List Float) := do
+  if bins < 1 then throw .bins
+  let (f, l) ← outerEdges data rng
+  let edges := linspaceEdges f l bins.toNat
+  let pairs := edges.zip edges.tail
+  if pairs.any (fun (a, b) => a >= b) then throw .tooMany
+  return (f, l, edges)
+
+/--
+The uniform-bin loop of `histogram` at `_histograms_impl.py:812-873` for one block, with no weights. The test arrays have far fewer than 65536 elements. `norm_denom` is the exact difference of integer edges rounded to a double (`_unsigned_subtract` subtracts as unsigned), or the difference of the doubles. Values outside the edges are dropped (`:837`), using exact integer comparison against integer edges and comparison of doubles against double edges. The index is the truncated `((x - first) / denom) * n` of the doubles, one less if it equals `n`, one less again if the double is below its edge, and one more if it is at least the next edge and not in the last bin.
+-/
+def histCounts (data : List Int) (rng : Option (Int × Int)) (n : Nat) (first last : Edge) (edges : List Float) : Except HistErr (List Int) := do
+  match rng, first, last with
+  | some (a, b), .int _, .int _ => if !(inIntp a && inIntp b) then throw .overflow
+  | _, _, _ => pure ()
+  let ff := first.toF
+  let denom := match first, last with
+    | .int f, .int l => fOfInt (l - f)
+    | _, _ => last.toF - ff
+  let nf := n.toFloat
+  let kept := data.filter fun x =>
+    match first, last with
+    | .int f, .int l => decide (f ≤ x) && decide (x ≤ l)
+    | _, _ => decide (fOfInt x ≥ ff) && decide (fOfInt x ≤ last.toF)
+  let step1 : List (Float × Nat) := kept.map fun x =>
+    let xf := fOfInt x
+    let i0 := (Float.floor (((xf - ff) / denom) * nf)).toUInt64.toNat
+    (xf, if i0 == n then n - 1 else i0)
+  if step1.any fun (_, i) => i > n then throw .index
+  let step2 : List (Float × Int) := step1.map fun (xf, i) =>
+    (xf, if xf < edges.getD i 0 then (i : Int) - 1 else (i : Int))
+  let step3 : List Int := step2.map fun (xf, i) =>
+    if xf >= edges.getD (i + 1).toNat 0 && i != (n : Int) - 1 then i + 1 else i
+  if step3.any (· < 0) then throw .negIndex
+  return (List.range n).map fun (k : Nat) => ((step3.filter (· = (k : Int))).length : Int)
+
+/-- The bin of `x` for integer edges whose width is a multiple of `n`, computed exactly: the edges are `first + i * (last - first) / n` and the last bin includes `last`. -/
+def exactBin (first last : Int) (n : Nat) (x : Int) : Option Nat :=
+  if x < first || x > last then none
+  else some (min (((x - first) * n / (last - first)).toNat) (n - 1))
+
+/-- The counts of an exact integer model of `histogram` for `first < last`. -/
+def histExact (data : List Int) (first last : Int) (n : Nat) : List Int :=
+  let bins := data.filterMap (exactBin first last n)
+  (List.range n).map fun k => ((bins.filter (· = k)).length : Int)
+
 end NumpyLean.LibInt
