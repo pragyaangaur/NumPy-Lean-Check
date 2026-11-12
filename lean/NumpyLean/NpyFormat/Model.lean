@@ -699,4 +699,61 @@ def frombuffer (len : Nat) (code : String) (count offset : Int) : Except FromBuf
             -- The array constructor then checks the size without wrapping, `ctors.c:725` to `757`.
             if Shape.newArraySizeFits [count] isz == some true then .ok count else .error .tooBig
 
+/-!
+## Integer fields of `np.loadtxt`
+
+`str_to_int64` and `str_to_uint64`, `_core/src/multiarray/textreading/str_to_int.h:20` and `:98`, which `npy_to_int8` to `npy_to_uint64` call with the limits of the type (`str_to_int.c:13`).
+-/
+
+/-- `Py_UNICODE_ISSPACE`: the Unicode white space characters, which include U+001C to U+001F. -/
+def isSpaceU (c : Char) : Bool :=
+  let n := c.toNat
+  (9 ≤ n && n ≤ 13) || (0x1c ≤ n && n ≤ 0x20) || n == 0x85 || n == 0xa0 || n == 0x1680
+    || (0x2000 ≤ n && n ≤ 0x200a) || n == 0x2028 || n == 0x2029 || n == 0x202f || n == 0x205f || n == 0x3000
+
+/-- Digits are those of C `isdigit`, ASCII only. -/
+def isAsciiDigit (c : Char) : Bool := '0' ≤ c && c ≤ '9'
+
+/--
+The digit loop shared by the two C functions. For a negative number the digits accumulate downwards and the limit is `lim = -min`, so that `number` stays inside `[min, 0]`. Here the accumulation is on the magnitude, which gives the same accept set as the C tests `number > pre_min`, `d - '0' <= dig_pre_min` and their positive twins.
+-/
+def accumDigits (limit : Nat) : Nat → List Char → Option (Nat × List Char)
+  | acc, [] => some (acc, [])
+  | acc, c :: rest =>
+    if isAsciiDigit c then
+      let d := c.toNat - 48
+      let next := acc * 10 + d
+      if next ≤ limit then accumDigits limit next rest else none
+    else some (acc, c :: rest)
+
+/-- `str_to_int64` with the limits `intMin ≤ x ≤ intMax` (a signed type) or `str_to_uint64` (`signed = false`, `intMin = 0`). Returns the value, or `none` for the return value -1. -/
+def loadtxtInt (signed : Bool) (intMin : Int) (intMax : Nat) (s : List Char) : Option Int :=
+  let p0 := s.dropWhile isSpaceU
+  let (neg, p1) : Bool × List Char :=
+    match p0 with
+    | '-' :: r => (true, r)
+    | '+' :: r => (false, r)
+    | _ => (false, p0)
+  if !signed && neg then none
+  else
+    match p1 with
+    | c :: _ =>
+      if !isAsciiDigit c then none
+      else
+        match accumDigits (if neg then intMin.natAbs else intMax) 0 p1 with
+        | none => none
+        | some (m, rest) =>
+          if (rest.dropWhile isSpaceU).isEmpty then some (if neg then -(m : Int) else m) else none
+    | [] => none
+
+/-- The conversion for a dtype code `i1` to `i8` or `u1` to `u8`. -/
+def loadtxtIntTyped (code : String) (s : List Char) : Option Int :=
+  match code.toList with
+  | k :: ds =>
+    let bytes := (digitsToInt ds).toNat
+    let bits := 8 * bytes
+    if k == 'i' then loadtxtInt true (-(2 : Int) ^ (bits - 1)) (2 ^ (bits - 1) - 1) s
+    else loadtxtInt false 0 (2 ^ bits - 1) s
+  | [] => none
+
 end NumpyLean.NpyFormat
