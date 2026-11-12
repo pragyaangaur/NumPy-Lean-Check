@@ -1,0 +1,11 @@
+id: broadcast-insert-bool-list-attribute-error
+title: insert raises AttributeError for a Python list of booleans although booleans are documented
+area: Broadcast
+kind: wrong-error
+severity: low
+numpy_version: 2.5.4
+source: lib/_function_base_impl.py:5539
+property: NumpyLean.Broadcast.insert_bool_list_refuted
+summary: >
+  The `insert` docstring lists `obj` as "slice, int, array-like of ints or bools" and says boolean indices are a mask. `np.insert(np.arange(3), np.array([True, False, True]), 9)` returns `[9, 0, 1, 9, 2]`, but the same mask as a list, `np.insert(np.arange(3), [True, False, True], 9)`, raises `AttributeError: 'list' object has no attribute 'ndim'`. The dtype test uses the converted array `indices`, and the next line reads `obj.ndim` from the original argument (lib/_function_base_impl.py:5539), which only exists for arrays. A Python `True` as `obj` fails the same way.
+upstream: FIXED-ON-MAIN, searched open and closed issues and PRs on 12 Nov 2026, reported as https://github.com/numpy/numpy/issues/33205 and fixed by https://github.com/numpy/numpy/pull/33259 (merged 10 Nov 2026), main now reads indices.ndim
