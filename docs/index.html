@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>I copied part of NumPy into a proof checker, and it found 55 bugs | Pragyaan Gaur</title>
+<meta name="description" content="I copied part of NumPy&#x27;s C code into the Lean 4 proof checker, raced it against the real library 7.5 million times and proved claims about it. It found 55 bugs, and 26 had never been reported.">
+<meta name="author" content="Pragyaan Gaur">
+<link rel="canonical" href="https://pragyaangaur.dev/NumPy-Lean-Check/">
+<meta property="og:type" content="article">
+<meta property="og:title" content="I copied part of NumPy into a proof checker, and it found 55 bugs">
+<meta property="og:description" content="I copied part of NumPy&#x27;s C code into the Lean 4 proof checker, raced it against the real library 7.5 million times and proved claims about it. It found 55 bugs, and 26 had never been reported.">
+<meta property="og:url" content="https://pragyaangaur.dev/NumPy-Lean-Check/">
+<meta property="og:image" content="https://pragyaangaur.dev/NumPy-Lean-Check/images/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="https://pragyaangaur.dev/favicon.png">
+<style>
+@font-face { font-family: "Latin Modern"; font-weight: 400; font-display: swap; src: url("https://pragyaangaur.dev/assets/fonts/LM-regular.woff2") format("woff2"); }
+@font-face { font-family: "Latin Modern"; font-style: italic; font-weight: 400; font-display: swap; src: url("https://pragyaangaur.dev/assets/fonts/LM-italic.woff2") format("woff2"); }
+@font-face { font-family: "Latin Modern"; font-weight: 700; font-display: swap; src: url("https://pragyaangaur.dev/assets/fonts/LM-bold.woff2") format("woff2"); }
+:root { --bg: #fcfcfa; --ink: #1b1b1a; --muted: #5b5a56; --rule: #e2e0da; --code: #f2f1ec; --link: #1f5fbf; }
+@media (prefers-color-scheme: dark) { :root { --bg: #181817; --ink: #ecebe6; --muted: #b3b1a8; --rule: #33322f; --code: #242422; --link: #7fb0f5; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 20px/1.6 "Latin Modern", Georgia, serif; }
+main { max-width: 700px; margin: 0 auto; padding: 56px 22px 80px; }
+h1 { font-size: 2.05em; line-height: 1.2; margin: 0 0 12px; }
+h2 { font-size: 1.3em; margin: 2em 0 0.5em; }
+p, li { margin: 0 0 1em; }
+li { margin-bottom: 0.45em; }
+a { color: var(--link); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+em { color: var(--muted); }
+code { font: 0.8em ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code); padding: 0.12em 0.35em; border-radius: 4px; }
+pre { background: var(--code); padding: 16px 18px; border-radius: 8px; overflow-x: auto; line-height: 1.45; margin: 0 0 1.2em; }
+pre code { background: none; padding: 0; font-size: 0.78em; }
+figure { margin: 1.6em 0; }
+figure img { width: 100%; height: auto; border-radius: 10px; }
+@media (min-width: 1000px) { figure { margin-left: -130px; margin-right: -130px; } }
+footer { margin-top: 3em; padding-top: 1em; border-top: 1px solid var(--rule); color: var(--muted); font-size: 0.85em; }
+@media (max-width: 600px) { body { font-size: 18px; } h1 { font-size: 1.7em; } }
+</style>
+</head>
+<body>
+<main>
+<h1>I copied part of NumPy into a proof checker, and it found 55 bugs</h1>
+<p><em>November 2026. The code and every bug record are at <a href="https://github.com/pragyaangaur/NumPy-Lean-Check">github.com/pragyaangaur/NumPy-Lean-Check</a>.</em></p>
+<p>Here is one line of NumPy 2.5.4, the current release of the library that most of scientific Python runs on:</p>
+<div class="highlight highlight-source-python"><pre class="notranslate"><span class="pl-c1">&gt;</span><span class="pl-c1">&gt;&gt;</span> <span class="pl-k">import</span> <span class="pl-s1">numpy</span> <span class="pl-k">as</span> <span class="pl-s1">np</span>
+<span class="pl-c1">&gt;</span><span class="pl-c1">&gt;&gt;</span> <span class="pl-s1">np</span>.<span class="pl-c1">bincount</span>([<span class="pl-c1">2</span><span class="pl-c1">**</span><span class="pl-c1">63</span> <span class="pl-c1">-</span> <span class="pl-c1">1</span>])
+<span class="pl-en">array</span>([], <span class="pl-s1">dtype</span><span class="pl-c1">=</span><span class="pl-s1">int64</span>)</pre></div>
+<p><code class="notranslate">bincount</code> counts how often each number appears, so its answer should have one slot for every number up to the largest input. For this input the answer should be enormous. NumPy returns an empty array instead, and on the way it writes 8 bytes into memory that it does not own. If you run it in a loop, Python crashes. As far as I could find, nobody had reported this before. A proof found it.</p>
+<h2>The idea</h2>
+<p>In late October 2026, Broyojo published <a href="https://github.com/Broyojo/python-formalization">python-formalization</a>, which copies CPython into the Lean 4 proof assistant line by line and tests the copy against the real interpreter. Miles Cranmer had started the same thing for Julia a few days earlier. I searched for anyone who had done it for NumPy and found nobody, so on 11 November 2026 I tried it.</p>
+<p>Lean is a programming language that also checks proofs. You can write a function in it and run it like any other program. You can also state a claim about every possible input, and Lean only accepts the claim when you give it a proof that it can check step by step. When the claim is false, you prove that instead by giving one input where it fails.</p>
+<h2>How it works</h2>
+<p>I did not try to copy all of NumPy. I picked the parts where the logic is integer arithmetic, because integers can be checked exactly and they are where overflow bugs hide. That meant array shapes, indexing, type promotion, dates and times, string search and the <code class="notranslate">.npy</code> file format. In the end this is a few thousand of NumPy's roughly 212,000 lines of C.</p>
+<p>Each piece goes through five steps:</p>
+<ol>
+<li>Read the C source of NumPy 2.5.4, pinned to one commit.</li>
+<li>Copy it into Lean with the same branches in the same order. Where the C code can overflow a 64-bit integer, the Lean version wraps at exactly the same place.</li>
+<li>Race the two. A script makes 50,000 random inputs, with extra weight on awkward values such as zero and the edges of <code class="notranslate">2**63</code>, and checks that the Lean copy and the real NumPy give the same answer for every one. Each test has to pass on three different random seeds. When they disagree, the Lean copy is wrong and gets fixed.</li>
+<li>Once the copy matches the library, ask it questions. The claims come from NumPy's own documentation and from comments in its source. A proof covers every possible input, which a test can never do.</li>
+<li>When a claim turns out to be false and the real NumPy shows the same failure, write it up as a bug with a short script that reproduces it.</li>
+</ol>
+<figure><picture><source media="(prefers-color-scheme: dark)" srcset="images/pipeline-dark.svg"><img src="images/pipeline-light.svg" alt="The five steps: read the C, mirror it in Lean, race the two, prove or refute, file the bug"></picture></figure>
+<p>The <code class="notranslate">bincount</code> bug came out of step 4. The documentation promises that every input is a valid slot in the output. The C code computes the length as the largest input plus one, and for <code class="notranslate">2**63 - 1</code> that addition overflows to a negative number. A later step replaces the negative length with zero, and then the counting loop writes into an array of length zero. The Lean theorem that states "every input fits" is false, and Lean accepted the proof that it is false with that one input.</p>
+<h2>What it found</h2>
+<p>The 50 tests ran 7.5 million cases, and every case agreed with NumPy. Out of 208 claims, Lean proved 121 and refuted 87. Some refuted claims are behaviour that NumPy's documentation already warns about, and I did not count those. The rest became 55 bug records.</p>
+<figure><picture><source media="(prefers-color-scheme: dark)" srcset="images/findings-dark.svg"><img src="images/findings-light.svg" alt="The 55 bug records by area and by whether NumPy already knew about them"></picture></figure>
+<p>Five of them are serious, meaning a memory error or a silently wrong answer on ordinary input:</p>
+<ul>
+<li><code class="notranslate">np.bincount([2**63 - 1])</code> writes outside its buffer, as above.</li>
+<li><code class="notranslate">np.repeat(np.arange(4), 2**62)</code> makes an output that is too small and then writes past its end, which crashes Python.</li>
+<li><code class="notranslate">np.datetime64('2300-01-01', 'ns')</code> returns a date in 1715 with no warning.</li>
+<li>Casting a date stored in years to nanoseconds wraps into the wrong century in the same way.</li>
+<li>Turning a structured array into a <code class="notranslate">memoryview</code> and back reads some fields from the wrong bytes.</li>
+</ul>
+<p>Some of the smaller ones are my favourites. A leading space makes <code class="notranslate">np.datetime64(' -2000')</code> drop its minus sign and return the year 2000. The comparison <code class="notranslate">np.datetime64('1971', 'Y') == np.datetime64(26, '14D')</code> returns True, although the right side is 31 December 1970, because the common unit picks up a stray factor of 7. <code class="notranslate">np.transpose</code> accepts the axis <code class="notranslate">2**32</code> and treats it as axis 0, because the C code keeps only the low 32 bits.</p>
+<h2>Were they new?</h2>
+<p>Finding a bug only matters if nobody found it first, so I searched NumPy's issue tracker for every record, open and closed, and checked whether the code on NumPy's main branch had changed. The result was humbling:</p>
+<ul>
+<li>26 of the 55 were new. No report described them, and the faulty code was still there.</li>
+<li>13 shared a cause with an existing report but showed a symptom nobody had described.</li>
+<li>9 were already reported. Four of the five serious ones are in this group, including the <code class="notranslate">repeat</code> crash, which someone else had reported on 18 October.</li>
+<li>7 had already been fixed on NumPy's main branch after the 2.5.4 release, between July and November 2026.</li>
+</ul>
+<p>Other people are clearly working on the same code right now, and at least one of their recent fixes says an AI model helped find the bug. The <code class="notranslate">bincount</code> write was the only serious bug that was new.</p>
+<h2>How I used AI</h2>
+<p>NumPy has a clear policy on AI. It asks contributors not to use AI to write issues or to speak for them, and it asks for disclosure. So it is worth being plain about how this was built. I designed the method and picked the scope. Claude Opus 5.5 and Sonnet 5.5 agents wrote the Lean models and the test scripts, three areas at a time, and I checked each area by rerunning its tests and reproducing its bugs before the next one started. The Lean proof checker does not trust any of that. Every proof and every refutation in the repository was checked by Lean's kernel, and every bug was reproduced on the real NumPy.</p>
+<p>I did not report the bugs one by one. Instead, I wrote a short post in my own words and opened <a href="https://github.com/numpy/numpy/issues/33299" data-hovercard-type="issue" data-hovercard-url="/numpy/numpy/issues/33299/hovercard">numpy/numpy#33299</a> to ask the maintainers whether they want the findings at all. If they do, I will file each one myself in my own words.</p>
+<h2>What it does not show</h2>
+<p>A proof is only as good as the copy it is about. The race in step 3 is strong evidence that the Lean copy matches NumPy, but it is not a proof that it matches. Every bug is therefore also confirmed by running real NumPy, and that check is the one I trust. The model covers a small part of the library, and it says nothing about floating point maths, linear algebra or anything else I left out. "New" means my searches found no earlier report, and GitHub's search is weak, so some of the 26 may turn out to be known.</p>
+<p>The whole project took two days on a 16 GB laptop. The code, the proofs, the 55 bug records and a script that reruns every reproducer are in the <a href="https://github.com/pragyaangaur/NumPy-Lean-Check">repository</a>.</p>
+<footer>Written by <a href="https://pragyaangaur.dev/">Pragyaan Gaur</a>. The code, the proofs and every bug record are in the <a href="https://github.com/pragyaangaur/NumPy-Lean-Check">NumPy-Lean-Check repository</a>.</footer>
+</main>
+</body>
+</html>
