@@ -1,0 +1,11 @@
+id: libint-histogram-int64-rounds-to-double
+title: histogram puts int64 and uint64 values above 2**53 in the wrong bin because the data is rounded to float64
+area: LibInt
+kind: wrong-result
+severity: medium
+numpy_version: 2.5.4
+source: lib/_histograms_impl.py:847
+property: NumpyLean.LibInt.histogram_exact_counts_int64_refuted
+summary: >
+  For an integer `bins` the fast loop of `histogram` keeps the data that lies inside the range with exact integer comparisons (`_histograms_impl.py:837-838`), and then converts it to the dtype of the bin edges, which is `float64` for integer data (`tmp_a = tmp_a.astype(bin_edges.dtype, copy=False)` at `:847`). Integers above `2**53` round to the nearest double there. The bin index is then corrected against the edges with comparisons of those rounded doubles (`:858-863`), so a value that is just below an edge can round up onto the edge and is counted in the upper bin. With exactly representable edges, `np.histogram(np.array([2**61 - 1]), bins=2, range=(0, 2**62))` returns the counts `[0, 1]`, although the value is below the middle edge `2**61` (the same for `uint64`). The edges themselves are exact, the exact integer rule gives `[1, 0]`, and the docstring says that all but the last bin are half-open without any limit on the size of integer data. In a sample of 200,000 generated cases with exact edges, every case that differs from the exact integer model has data or range above `2**53`.
+upstream: RELATED https://github.com/numpy/numpy/issues/8627 (open, histogram of integers of 2**53 and more breaks on float granularity, a different symptom), the open pull request https://github.com/numpy/numpy/pull/31496 changes only the creation of the edges, and main still converts the data with astype at the same place; searched open and closed issues and pull requests on 12 Nov 2026 and found no report of misbinned integer data
