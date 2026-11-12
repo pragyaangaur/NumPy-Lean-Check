@@ -77,14 +77,14 @@ def withLen1 (t : String) : List Nat :=
   [b.length % 256, b.length / 256] ++ b
 
 /-- PROP npyformat.read_header.errors_are_value_errors : REFUTED
-Source: the docstring of `read_array_header_1_0`, `lib/_format_impl.py:538`, "Raises ValueError If the data is invalid". A header whose closing brace is missing (a truncated file) makes `ast.literal_eval` raise `SyntaxError`, and the retry for Python 2 files at line 656 runs `_filter_header`, whose `tokenize` call raises `tokenize.TokenError` for the unclosed brace. That error is not a `ValueError` and escapes. The same happens for an unterminated string. NumPy shows the same, see `bugs/npyformat-read-header-token-error.yaml`. -/
+Source: the docstring of `read_array_header_1_0`, `lib/_format_impl.py:538`, "Raises ValueError If the data is invalid". A header whose closing brace is missing (a truncated file) makes `ast.literal_eval` raise `SyntaxError`, and the retry for Python 2 files at line 661 runs `_filter_header`, whose `tokenize` call raises `tokenize.TokenError` for the unclosed brace. That error is not a `ValueError` and escapes. The same happens for an unterminated string. NumPy shows the same, see `bugs/npyformat-read-header-token-error.yaml`. -/
 theorem readHeader_tokenError_refuted :
     ¬ (∀ d : List Nat, readHeader 1 d ≠ .error .tokenError) := by
   intro h
   exact h (withLen1 "{'descr': '<f8', 'fortran_order': False, 'shape': (3,), ") (by decide +kernel)
 
 /-- PROP npyformat.read_header.keys_error_is_value_error : REFUTED
-Source: the same docstring, "Raises ValueError If the data is invalid", and line 667, which formats `sorted(d.keys())` into the `ValueError` for wrong keys. When the keys cannot be ordered, as for `{'a': 1, 1: 2}`, the `sorted` call raises `TypeError` first. NumPy shows the same, see `bugs/npyformat-read-header-key-sort-type-error.yaml`. -/
+Source: the same docstring, "Raises ValueError If the data is invalid", and line 681, which formats `sorted(d.keys())` into the `ValueError` for wrong keys (line 681). When the keys cannot be ordered, as for `{'a': 1, 1: 2}`, the `sorted` call raises `TypeError` first. NumPy shows the same, see `bugs/npyformat-read-header-key-sort-type-error.yaml`. -/
 theorem readHeader_keySort_refuted :
     ¬ (∀ d : List Nat, readHeader 1 d ≠ .error .keySort) := by
   intro h
@@ -107,7 +107,7 @@ theorem readHeader_negative_shape_refuted :
 /-! ## read_array -/
 
 /-- PROP npyformat.read_array.negative_shape_rejected : REFUTED
-Source: `ValueError` for invalid data in the docstring of `read_array`, `lib/_format_impl.py:808`, and `np.zeros((-1, 2))`, which refuses negative dimensions. `read_array` computes the count with `multiply.reduce(shape, dtype=int64)` (line 837), which wraps, and reshapes with `array.reshape(shape)`, which treats any negative entry as the unknown dimension (`shape.c:499`). The shape `(-4294967296, 4294967296)` has a wrapped count of 0 and loads as an empty array of shape `(0, 4294967296)`. NumPy shows the same, see `bugs/npyformat-read-array-negative-shape-wraps.yaml`. -/
+Source: `ValueError` for invalid data in the docstring of `read_array`, `lib/_format_impl.py:808`, and `np.zeros((-1, 2))`, which refuses negative dimensions. `read_array` computes the count with `multiply.reduce(shape, dtype=int64)` (line 827), which wraps, and reshapes with `array.reshape(shape)`, which treats any negative entry as the unknown dimension (`shape.c:499`). The shape `(-4294967296, 4294967296)` has a wrapped count of 0 and loads as an empty array of shape `(0, 4294967296)`. NumPy shows the same, see `bugs/npyformat-read-array-negative-shape-wraps.yaml`. -/
 theorem readArray_negative_shape_refuted :
     ¬ (∀ shape f r, shape.any (· < 0) = true → readArrayShape shape f ≠ .ok r) := by
   intro h
