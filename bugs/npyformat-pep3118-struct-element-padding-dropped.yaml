@@ -1,0 +1,11 @@
+id: npyformat-pep3118-struct-element-padding-dropped
+title: memoryview format drops the padding inside a structured dtype, so np.array(memoryview(a)) reads array fields from wrong bytes or crashes
+area: NpyFormat
+kind: wrong-result
+severity: high
+numpy_version: 2.5.4
+source: _core/src/multiarray/buffer.c:295
+property: NumpyLean.NpyFormat.round_trip_keeps_element_layout_refuted
+summary: >
+  The format string only pads with `x` between fields (buffer.c:281-294). The padding after the last field of a structured dtype, which an explicit `itemsize` creates, is never written, and the running offset after a structure counts only its fields. With `inner = np.dtype({'names': ['a'], 'formats': ['<i4'], 'offsets': [0], 'itemsize': 6})` and `dt = np.dtype({'names': ['x', 'y'], 'formats': [(inner, (2,)), '<i4'], 'offsets': [0, 12], 'itemsize': 16})` the format is `T{(2)T{i:a:}:x:xxxxi:y:}`, which says that the two elements of `x` are 4 bytes apart. The writer then fills up to offset 12 with `xxxx` as if the elements had taken 8 bytes in all, so the total of 16 bytes agrees with the dtype and the item size check at ctors.c:1247 passes. `np.array(memoryview(a))` returns an array whose `x['a']` reads the second element from byte 4 instead of byte 6: with `a['x']['a'] = [[11, 22]]` the copy holds `[[11, 1441792]]`. With an object field in the inner type, `inner = np.dtype({'names': ['o'], 'formats': ['O'], 'offsets': [0], 'itemsize': 9})`, `dt = np.dtype({'names': ['x', 'y'], 'formats': [(inner, (2,)), 'S6'], 'offsets': [0, 18], 'itemsize': 24})` and `np.array(memoryview(np.zeros(1, dt)))`, the reader takes bytes of the wrong place for object pointers and the interpreter dies with a segmentation fault (exit code 139). When the structure is the top level dtype the missing padding is caught by the item size check and gives `RuntimeError`, which is the case of the open issue below. Inside a subarray or another structure nothing catches it.
+upstream: KNOWN-OPEN https://github.com/numpy/numpy/issues/7797 (open since 2016: trailing padding is not written, only the top level RuntimeError case is described, not the silent wrong values or the crash), the fix https://github.com/numpy/numpy/pull/31547 was closed unmerged on 1 Jun 2026, main has the same code
