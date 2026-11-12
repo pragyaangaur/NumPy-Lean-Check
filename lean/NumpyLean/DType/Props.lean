@@ -195,4 +195,89 @@ theorem pyint_op_overflow_iff_out_of_range :
       (pyIntOp n v).isNone == !(decide ((range n).1 ≤ v) && decide (v ≤ (range n).2))) = true := by
   decide
 
+/-! ## Python ints of any size with floating point and complex dtypes -/
+
+/-- The floating point and complex dtypes of the tests. -/
+def floatNums : List Nat := [NPY_HALF, NPY_FLOAT, NPY_DOUBLE, NPY_LONGDOUBLE, NPY_CFLOAT, NPY_CDOUBLE, NPY_CLONGDOUBLE]
+
+/-- Python ints at the limits where the outcome changes, and their negatives are added by `bigEdges`. -/
+def bigEdgesPos : List Int :=
+  [0, 1, 65504, 65519, 65520, 65535, 65536, 2 ^ 24, 2 ^ 53, 2 ^ 63 - 1, 2 ^ 63, 2 ^ 64, 2 ^ 127,
+   2 ^ 128 - 2 ^ 104, 2 ^ 128 - 2 ^ 103 - 2 ^ 74 - 1, 2 ^ 128 - 2 ^ 103 - 2 ^ 74, 2 ^ 128 - 2 ^ 103 - 2 ^ 73,
+   2 ^ 128 - 2 ^ 103 - 1, 2 ^ 128 - 2 ^ 103, 2 ^ 128, 2 ^ 1023, 2 ^ 1024 - 2 ^ 970 - 1, 2 ^ 1024 - 2 ^ 970,
+   2 ^ 1024 - 1, 2 ^ 1024, 10 ^ 400]
+
+def bigEdges : List Int := bigEdgesPos ++ bigEdgesPos.map (fun v => -v)
+
+/-- PROP dtype.pyint_to_float.scalar_equals_array : PROVEN
+Source: `convert_to_@name@`, `umath/scalarmath.c.src:973-1001`. `np.float32(1) + v` sends a Python int that does not fit a `long` or is not safe to cast from `long` to the `setitem` of the dtype, which is also what `np.asarray(v, dtype)` and an array operand run. A `long` that is safe to cast is converted with a C cast, which for `double`, `longdouble` and their complex types gives the same finite value without a warning as the `setitem`. Checked on `bigEdges` for every floating point and complex dtype. -/
+theorem pyint_to_float_scalar_equals_array :
+    (floatNums.all fun n => bigEdges.all fun v => pyIntScalarConv n v == pyIntToFloat n v) = true := by
+  decide +kernel
+
+/-- PROP dtype.pyint_to_float.complex_matches_real_float : PROVEN
+Source: `FLOAT_setitem` and `CFLOAT_setitem`, `DOUBLE_setitem` and `CDOUBLE_setitem` (`arraytypes.c.src:355` and `:449`) both go through a double and then narrow in the same way. Real and complex give the same outcome on `bigEdges` for float32 with complex64 and for float64 with complex128. -/
+theorem pyint_to_float_complex_matches_real_float :
+    (bigEdges.all fun v => pyIntToFloat NPY_FLOAT v == pyIntToFloat NPY_CFLOAT v
+      && pyIntToFloat NPY_DOUBLE v == pyIntToFloat NPY_CDOUBLE v) = true := by
+  decide +kernel
+
+/-- PROP dtype.pyint_to_float.complex_matches_real_longdouble : REFUTED
+Source: `LONGDOUBLE_setitem` converts a Python int with `npy_longdouble_from_PyLong` (`arraytypes.c.src:526`, `common/npy_longdouble.c:128`), "without precision or range loss via a double", and gives an infinity and a `RuntimeWarning` beyond the range. `CLONGDOUBLE_setitem` (`arraytypes.c.src:449`) takes the int through a Python complex number, a double, and raises `OverflowError` ("int too large to convert to float") from `2**1024 - 2**970`. So `np.asarray(2**1024, dtype=np.longdouble)` is `inf` with a warning and `np.asarray(2**1024, dtype=np.clongdouble)` raises. -/
+theorem pyint_to_float_longdouble_complex_differ :
+    pyIntToFloat NPY_LONGDOUBLE (2 ^ 1024) = some (.ok true true) ∧ pyIntToFloat NPY_CLONGDOUBLE (2 ^ 1024) = some .overflowError := by
+  decide +kernel
+
+/-- PROP dtype.pyint_to_float.longdouble_never_raises : PROVEN
+Source: `npy_longdouble_from_PyLong`, `common/npy_longdouble.c:128`, which only warns on `ERANGE`. Storing any Python int in a `longdouble` gives a value, finite or infinite, and never `OverflowError`. -/
+theorem pyint_to_float_longdouble_never_raises (v : Int) : pyIntToFloat NPY_LONGDOUBLE v ≠ some .overflowError := by
+  simp [pyIntToFloat, NPY_LONGDOUBLE, isFloat, isComplex]
+
+/-- PROP dtype.pyint_to_float.warning_iff_infinite : PROVEN
+Source: `MyPyFloat_AsFloat` and `MyPyFloat_AsHalf` (`arraytypes.c.src:123-150`) warn exactly when narrowing makes an infinity from a finite double, `CFLOAT_setitem` does the same for both parts, and `npy_longdouble_from_PyLong` warns on `ERANGE`, which is when `strtold` returns an infinity. Every stored value that is infinite comes with the `RuntimeWarning` and no finite value does. -/
+theorem pyint_to_float_warning_iff_infinite (n : Nat) (v : Int) (inf warns : Bool)
+    (h : pyIntToFloat n v = some (.ok inf warns)) : warns = inf := by
+  unfold pyIntToFloat at h
+  split at h
+  · simp at h
+  · split at h
+    · simp only [Option.some.injEq, PyIntConv.ok.injEq] at h
+      obtain ⟨h1, h2⟩ := h
+      rw [← h1, ← h2]
+    · split at h
+      · simp at h
+      · split at h
+        · simp only [Option.some.injEq, PyIntConv.ok.injEq] at h
+          obtain ⟨h1, h2⟩ := h
+          rw [← h1, ← h2]
+        · split at h
+          · simp only [Option.some.injEq, PyIntConv.ok.injEq] at h
+            obtain ⟨h1, h2⟩ := h
+            rw [← h1, ← h2]
+          · simp only [Option.some.injEq, PyIntConv.ok.injEq] at h
+            obtain ⟨h1, h2⟩ := h
+            rw [← h1, ← h2]
+
+/-- PROP dtype.pyint_to_float.float32_limit_is_exact : REFUTED
+Source: the NumPy documentation of `float32` and IEEE 754 round to nearest: an integer converts to infinity when it is at least `2**128 - 2**103`, the midpoint between the largest float32 and `2**128`. The int is rounded twice, first to a double by `PyNumber_Float` and then to float32 (`MyPyFloat_AsFloat`, `arraytypes.c.src:123`). An int up to `2**74` below the midpoint rounds up to the double that is the midpoint and overflows, for example `2**128 - 2**103 - 2**73`. -/
+theorem pyint_to_float_float32_limit_refuted :
+    pyIntToFloat NPY_FLOAT (2 ^ 128 - 2 ^ 103 - 2 ^ 73) = some (.ok true true) ∧ (2 ^ 128 - 2 ^ 103 - 2 ^ 73 : Int).natAbs < 2 ^ 128 - 2 ^ 103 := by
+  decide +kernel
+
+/-- PROP dtype.pyint_to_float.half_limit : PROVEN
+Source: IEEE 754 half precision, largest finite value 65504, and the rounding of `npy_double_to_half`. A Python int becomes infinite in a float16 exactly from 65520 on, checked for every int from 65400 to 65700 and its negative. -/
+theorem pyint_to_float_half_limit :
+    ((List.range 300).all fun k =>
+      let v : Int := 65400 + k
+      (pyIntToFloat NPY_HALF v == some (.ok (decide (65520 ≤ v)) (decide (65520 ≤ v))))
+      && (pyIntToFloat NPY_HALF (-v) == some (.ok (decide (65520 ≤ v)) (decide (65520 ≤ v))))) = true := by
+  decide +kernel
+
+/-- PROP dtype.pyint_to_float.double_overflow_threshold : PROVEN
+Source: `PyLong_AsDouble` rounds correctly and raises `OverflowError` when the result would be `2**1024`, which is from `2**1024 - 2**970` (the midpoint between the largest double and `2**1024`) on. Checked on `bigEdges`. -/
+theorem pyint_to_float_double_overflow_threshold :
+    (bigEdges.all fun v => (pyLongToDouble v).isNone == decide (2 ^ 1024 - 2 ^ 970 ≤ v.natAbs)) = true := by
+  decide +kernel
+
+
 end NumpyLean.DType
