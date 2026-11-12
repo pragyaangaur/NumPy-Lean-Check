@@ -192,4 +192,142 @@ theorem dtypeStr_examples :
     ∧ dtypeStr "u1" = some "|u1" ∧ dtypeStr "f3" = none ∧ dtypeStr "M8[10us]" = some "<M8[10us]" := by
   decide +kernel
 
+/-! ## PEP 3118 buffer format -/
+
+section Pep3118
+open Pep3118
+
+/-- The format string, or `ERR` when the writer refuses the dtype. -/
+def fmtOut (n : Nat) (d : D) : String :=
+  match bufferFormat n d with
+  | .ok f => f
+  | .error _ => "ERR"
+
+/-- The canonical dtype of the round trip, or the kind of error. -/
+def rtOut (n : Nat) (d : D) : String :=
+  match roundTrip n d with
+  | .ok r => canon r
+  | .error .itemsize => "ERR itemsize"
+  | .error .parse => "ERR parse"
+  | .error (.format _) => "ERR format"
+
+/-- The item size of what the parser makes of the writer's string, before the check of `ctors.c:1262`. -/
+def parsedSize (n : Nat) (d : D) : Option Nat :=
+  match bufferFormat n d with
+  | .ok f => (match parseFormat f.toList with | .ok r => some r.size | .error _ => none)
+  | .error _ => none
+
+def offsetsOf : D → List Nat
+  | .struct _ fs => fs.map (fun p => p.2.1)
+  | _ => []
+
+/-- `np.dtype([('a', 'i4'), ('b', 'i1')])`, a packed structured dtype of 5 bytes. -/
+def packedI4B : D := .struct 5 [("a", 0, .scalar '=' 'i' 4), ("b", 4, .scalar '|' 'b' 1)]
+
+/-- PROP npyformat.pep3118.round_trip.keeps_item_size : PROVEN
+Source: `_array_from_buffer_3118`, `_core/src/multiarray/ctors.c:1247`: "Sanity check", the parsed dtype must have the item size of the buffer or the call raises `RuntimeError`. So when `np.array(memoryview(a))` succeeds, its dtype has the item size of `a`. -/
+theorem roundTrip_keeps_item_size (n : Nat) (d r : D) (h : roundTrip n d = .ok r) : r.size = d.size := by
+  unfold roundTrip at h
+  split at h
+  · simp at h
+  · split at h
+    · rename_i x _ _
+      split at h
+      · rename_i hs
+        simp only [Except.ok.injEq] at h
+        subst h
+        simpa using hs
+      · simp at h
+    · simp at h
+
+/-- PROP npyformat.pep3118.parse.recovers_item_size_of_format : REFUTED
+Source: `_buffer_format_string`, `_core/src/multiarray/buffer.c:191`, and `_dtype_from_pep3118`, `_core/_internal.py:627`, are meant to be inverse: the comments of the module say the string "describes" the dtype. For the packed dtype of 5 bytes and an array of length one the writer gives `T{i:a:b:b:}`, which the parser reads as a native aligned structure of 8 bytes. The importer's own check then raises `RuntimeError`. Same bug record as `npyformat.pep3118.format.same_dtype_same_string_for_every_length`. -/
+theorem parse_item_size_refuted :
+    ∃ n d, parsedSize n d ≠ none ∧ parsedSize n d ≠ some d.size :=
+  ⟨1, packedI4B, by decide +kernel, by decide +kernel⟩
+
+/-- PROP npyformat.pep3118.format.same_dtype_same_string_for_every_length : REFUTED
+Source: nothing promises it, but a format string describes a dtype and not an array, and `np.dtype` equality does not look at the length. The leaf check `_is_natively_aligned_at`, `buffer.c:141`, only tests the stride when the length is above one. For the packed dtype of 5 bytes the string is `T{i:a:b:b:}` for length one, which claims native alignment, and `T{=i:a:b:b:}` for length two. -/
+theorem format_depends_on_length_refuted :
+    fmtOut 1 packedI4B = "T{i:a:b:b:}" ∧ fmtOut 2 packedI4B = "T{=i:a:b:b:}" ∧ rtOut 1 packedI4B = "ERR itemsize"
+    ∧ rtOut 2 packedI4B = canon packedI4B := by
+  decide +kernel
+
+/-- `np.dtype('V4')`, four opaque bytes. -/
+def void4 : D := .scalar '|' 'V' 4
+
+/-- PROP npyformat.pep3118.round_trip.returns_original_dtype : REFUTED
+Source: the PEP 3118 round trip of `_array_from_buffer_3118` should give the dtype of the array back. For `V4` the writer gives `4x`, the parser reads padding and drops the unnamed field, and `np.array(memoryview(np.zeros(1, 'V4'))).dtype` is a structured dtype of 4 bytes with no fields. -/
+theorem round_trip_returns_original_refuted : ∃ n d r, roundTrip n d = .ok r ∧ canon r ≠ canon d :=
+  ⟨1, void4, .struct 4 [], by rfl, by decide +kernel⟩
+
+/-- A structured dtype of 16 bytes whose field `x` holds two elements of a structured type with item size 6, followed by `y`. -/
+def paddedElements : D :=
+  .struct 16 [("x", 0, .sub [2] (.struct 6 [("a", 0, .scalar '=' 'i' 4)])), ("y", 12, .scalar '=' 'i' 4)]
+
+/-- PROP npyformat.pep3118.round_trip.keeps_element_layout : REFUTED
+Source: same as `npyformat.pep3118.round_trip.returns_original_dtype`. The writer does not emit the trailing padding of a structured type (the offset after a structure counts only its fields, `buffer.c:295`), so the format of `paddedElements` is `T{(2)T{i:a:}:x:xxxxi:y:}`. The parser reads the elements as 4 bytes apart instead of 6, the padding that follows makes the total size agree, the item size check passes and the round trip succeeds with a different layout: the second element of `x` is read from the wrong bytes. -/
+theorem round_trip_keeps_element_layout_refuted :
+    fmtOut 1 paddedElements = "T{(2)T{i:a:}:x:xxxxi:y:}" ∧ rtOut 1 paddedElements ≠ canon paddedElements
+    ∧ rtOut 1 paddedElements ≠ "ERR itemsize" ∧ rtOut 1 paddedElements ≠ "ERR parse" := by
+  decide +kernel
+
+/-- A structured dtype of 6 bytes with a field of shape (2,) whose base is itself a subarray of shape (3,), `np.dtype([('a', ('u1', (3,)), (2,))])`. -/
+def nestedSub : D := .struct 6 [("a", 0, .sub [2] (.sub [3] (.scalar '|' 'B' 1)))]
+
+/-- PROP npyformat.pep3118.format.every_format_parses : REFUTED
+Source: `_dtype_from_pep3118`, `_core/_internal.py:627`, is the reader of the strings that `_buffer_format_string` writes. A nested subarray is written as `(2)(3)B`, and the parser takes only one shape prefix per item, so the string is rejected with "Unknown PEP 3118 data type specifier". -/
+theorem format_always_parses_refuted :
+    fmtOut 1 nestedSub = "T{(2)(3)B:a:}" ∧ rtOut 1 nestedSub = "ERR parse" := by
+  decide +kernel
+
+/-- PROP npyformat.pep3118.format.equal_dtypes_equal_strings : REFUTED
+Source: `np.dtype('l') == np.dtype('q')` is true on a 64-bit Unix target, but the writer keeps the C type: `buffer.c:374` writes `l` for `long` and `buffer.c:390` writes `q` for `long long`. Both strings read back as equivalent 8 byte integers (`l` is 8 bytes in native mode). The scalar types `np.long` and `np.longlong` are different NumPy types by design, so this is not a bug and has no record. -/
+theorem equal_dtypes_equal_strings_refuted :
+    canon (.scalar '=' 'l' 8) = canon (.scalar '=' 'q' 8) ∧ fmtOut 1 (.scalar '=' 'l' 8) = "l"
+    ∧ fmtOut 1 (.scalar '=' 'q' 8) = "q" := by
+  decide +kernel
+
+/-- The type characters and orders of the scalars that the writer accepts, with the byte orders that exist for them. -/
+def scalarUniverse : List D :=
+  ("?bBO".toList.map fun c => mkScalar '|' c 0)
+  ++ ("hHiIlLqQefdFD".toList.flatMap fun c => [mkScalar '=' c 0, mkScalar '>' c 0])
+  ++ ("gG".toList.map fun c => mkScalar '=' c 0)
+  ++ ((List.range 4).flatMap fun k => [mkScalar '|' 'S' (k + 1), mkScalar '=' 'U' (k + 1), mkScalar '>' 'U' (k + 1)])
+
+/-- PROP npyformat.pep3118.round_trip.scalar_identity : PROVEN
+Source: the round trip of `_array_from_buffer_3118`. Every bool, integer, float, complex, object, bytes and unicode scalar, in every byte order and for lengths one to three, comes back as the same canonical dtype. Checked on `scalarUniverse`, which excludes `V`, datetime and the native-only types in a non-native order, because those are the cases the other properties refute or the writer refuses. -/
+theorem round_trip_scalar_identity :
+    (scalarUniverse.all fun d => [1, 2, 3].all fun n => rtOut n d == canon d) = true := by
+  decide +kernel
+
+/-- PROP npyformat.pep3118.format.scalar_refusals : PROVEN
+Source: `buffer.c:359` ("cannot expose native-only dtype") and `buffer.c:421` ("cannot include dtype"). The writer refuses datetime and timedelta, and `long double` types in a non-native order, and nothing else. -/
+theorem format_scalar_refusals :
+    (["?bBhHiIlLqQefdgFDGO".toList, "MmgG".toList].flatten.all fun c =>
+      ['=', '>'].all fun o =>
+        let d := mkScalar (if "?bBO".toList.contains c then '|' else o) c 0
+        (match bufferFormat 1 d with | .ok _ => true | .error _ => false)
+          == (!("Mm".toList.contains c) && !(("gG".toList.contains c) && o == '>' && !("?bBO".toList.contains c)))) = true := by
+  decide +kernel
+
+/-- Structured dtypes of two fields from a pool of scalars, with gaps before the second field and after it. -/
+def flatStructs : List D :=
+  let pool := [mkScalar '|' 'b' 0, mkScalar '=' 'i' 0, mkScalar '=' 'd' 0, mkScalar '>' 'h' 0, mkScalar '|' 'S' 3]
+  pool.flatMap fun a => pool.flatMap fun b => [0, 1, 3].flatMap fun gap => [0, 3].map fun tail =>
+    D.struct (a.size + gap + b.size + tail) [("a", 0, a), ("b", a.size + gap, b)]
+
+def offsetsKept (n : Nat) (d : D) : Bool :=
+  match roundTrip n d with
+  | .ok r => offsetsOf r == offsetsOf d
+  | .error _ => true
+
+/-- PROP npyformat.pep3118.round_trip.keeps_flat_field_offsets : PROVEN
+Source: the round trip of `_array_from_buffer_3118`. When the round trip of a structured dtype with two scalar fields succeeds, the parsed dtype has the same field offsets, for every pair from five scalars (bool-sized, `int`, `double`, big endian `short`, bytes of length 3), gaps of 0, 1 and 3 bytes between the fields, 0 and 3 bytes after them (`flatStructs`) and lengths one to three. The writer pads with `x` up to each offset and the parser keeps those offsets. Nested structures are not covered, see `npyformat.pep3118.round_trip.keeps_element_layout`. -/
+theorem round_trip_keeps_flat_offsets :
+    (flatStructs.all fun d => [1, 2, 3].all fun n => offsetsKept n d) = true := by
+  decide +kernel
+
+end Pep3118
+
 end NumpyLean.NpyFormat
