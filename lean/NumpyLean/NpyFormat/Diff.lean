@@ -131,7 +131,22 @@ def diffArray : Handler
     | .error .floatPath => "ERR float"
   | _ => "BADARGS"
 
+/-- `frombuffer <buffer length> <dtype code> <count> <offset>` prints `OK <n>` or `ERR overflow|object|unsized|offset|multiple|small|toobig`. -/
+def diffFromBuffer : Handler
+  | [len, code, count, offset] =>
+    match frombuffer (parseInt len).toNat code (parseInt count) (parseInt offset) with
+    | .ok n => s!"OK {n}"
+    | .error .overflow => "ERR overflow"
+    | .error .object => "ERR object"
+    | .error .unsized => "ERR unsized"
+    | .error .offset => "ERR offset"
+    | .error .countUnknown => "ERR countunknown"
+    | .error .multiple => "ERR multiple"
+    | .error .small => "ERR small"
+    | .error .tooBig => "ERR toobig"
+  | _ => "BADARGS"
+
 def handlers : List (String × Handler) :=
-  [("npy_array", diffArray), ("npy_wrap", diffWrap), ("npy_write", diffWrite), ("npy_read", diffRead), ("npy_open", diffOpen)]
+  [("frombuffer", diffFromBuffer), ("npy_array", diffArray), ("npy_wrap", diffWrap), ("npy_write", diffWrite), ("npy_read", diffRead), ("npy_open", diffOpen)]
 
 end NumpyLean.NpyFormat
