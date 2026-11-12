@@ -1,0 +1,11 @@
+id: npyformat-pep3118-nested-subarray-unparseable
+title: memoryview writes a format string for a nested subarray that np.array(memoryview(a)) cannot read
+area: NpyFormat
+kind: inconsistent
+severity: low
+numpy_version: 2.5.4
+source: _core/_internal.py:653
+property: NumpyLean.NpyFormat.format_always_parses_refuted
+summary: >
+  For `dt = np.dtype([('a', ('u1', (3,)), (2,))])`, a field of shape (2,) whose base is itself a subarray of shape (3,), `memoryview(np.zeros(1, dt)).format` is `T{(2)(3)B:a:}`. The writer emits one `(shape)` prefix for every level of subarray (buffer.c:206-257, it recurses into the base, which has a subarray again). `__dtype_from_pep3118` accepts one shape prefix per item (`_internal.py:653-656`), so `(3)B` is read as a type specifier and `np.array(memoryview(a))` raises `ValueError: '...' is not a valid PEP 3118 buffer format string`, caused by "Unknown PEP 3118 data type specifier '(3)B:a:}'". NumPy cannot read back what it writes. Either the writer should merge the shapes or the reader should accept repeated prefixes.
+upstream: KNOWN-OPEN https://github.com/numpy/numpy/issues/20802 (open, the same format strings with nested subarrays, also https://github.com/numpy/numpy/issues/9049), main has the same code
