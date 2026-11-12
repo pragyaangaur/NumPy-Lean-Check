@@ -603,7 +603,7 @@ def readHeader (ver : Nat) (data : List Nat) : Except ReadError Header :=
 /-!
 ## What `read_array` does with the shape
 
-`read_array`, `lib/_format_impl.py:781`, turns the shape of the header into an element count with `numpy.multiply.reduce(shape, dtype=numpy.int64)` (line 837), allocates `numpy.ndarray(count, dtype=dtype)` (line 866) and finally reshapes to the shape (lines 893 and 894). The model covers the part that does not depend on the data: a descriptor of itemsize zero such as `|V0`, for which nothing is read and the checks on the count and the reshape are all that is left.
+`read_array`, `lib/_format_impl.py:781`, turns the shape of the header into an element count with `numpy.multiply.reduce(shape, dtype=numpy.int64)` (line 827), allocates `numpy.ndarray(count, dtype=dtype)` (line 862) and finally reshapes to the shape (lines 884 and 887). The model covers the part that does not depend on the data: a descriptor of itemsize zero such as `|V0`, for which nothing is read and the checks on the count and the reshape are all that is left.
 -/
 
 inductive ReadArrayErr where
