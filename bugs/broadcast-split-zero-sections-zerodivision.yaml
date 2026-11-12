@@ -1,0 +1,11 @@
+id: broadcast-split-zero-sections-zerodivision
+title: split raises ZeroDivisionError for zero sections where array_split raises ValueError
+area: Broadcast
+kind: wrong-error
+severity: low
+numpy_version: 2.5.4
+source: lib/_shape_base_impl.py:853
+property: NumpyLean.Broadcast.split_zero_sections_refuted
+summary: >
+  `np.split(np.arange(4), 0)` raises `ZeroDivisionError: integer modulo by zero`, while `np.array_split(np.arange(4), 0)` raises `ValueError: number sections must be larger than 0.` (lib/_shape_base_impl.py:760). The `split` docstring documents only a `ValueError` for an integer argument. The cause is the divisibility check `if N % sections:` at line 853, which runs before `array_split` is called and so before its own check for a number of sections that is not positive. A negative number of sections reaches `array_split` only when `N % sections` is zero, so `np.split(np.arange(4), -2)` gives the `ValueError` about sections and `np.split(np.arange(5), -2)` gives the "equal division" error.
+upstream: NEW, searched open and closed issues and PRs on 12 Nov 2026, no report of ZeroDivisionError from split, the closest are open PRs https://github.com/numpy/numpy/pull/32790 and https://github.com/numpy/numpy/pull/32184 which change how split and array_split read their second argument but not the zero case, main still has the check N % sections before calling array_split
