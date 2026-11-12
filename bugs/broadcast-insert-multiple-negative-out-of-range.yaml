@@ -1,0 +1,11 @@
+id: broadcast-insert-multiple-negative-out-of-range
+title: insert accepts negative out-of-bounds indices when obj has several elements
+area: Broadcast
+kind: wrong-result
+severity: medium
+numpy_version: 2.5.4
+source: lib/_function_base_impl.py:5586
+property: NumpyLean.Broadcast.insert_out_of_range_refuted
+summary: >
+  `np.insert(np.arange(3), -5, 9)` raises `IndexError: index -5 is out of bounds for axis 0 with size 3`, but `np.insert(np.arange(3), [-5, 1], 9)` returns `[0, 1, 9, 9, 2]` without an error. The single index path checks `index < -N or index > N` (lib/_function_base_impl.py:5555), and the docstring says a sequence behaves like calling insert several times. The multiple index path has no check. It adds `N` to the negative indices at line 5586 and then uses the result as a fancy index into the mask of the new array (line 5593), where a negative number counts from the end, so -5 becomes a position that depends on the number of inserted values. Indices above `N` do raise, but only through the later fancy index.
+upstream: FIXED-ON-MAIN, searched open and closed issues and PRs on 12 Nov 2026, reported as https://github.com/numpy/numpy/issues/31777 and fixed by https://github.com/numpy/numpy/pull/31782 (merged 3 Jul 2026), main now computes the minimum and maximum of the indices and raises IndexError before the shift
