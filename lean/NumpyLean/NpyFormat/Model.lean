@@ -758,7 +758,7 @@ def loadtxtIntTyped (code : String) (s : List Char) : Option Int :=
 
 /-! ## PEP 3118 buffer format strings
 
-The writing side is `_buffer_format_string`, `_core/src/multiarray/buffer.c:191`. The reading side is `_dtype_from_pep3118`, `_core/_internal.py:627`, preceded by the C fast path `_descriptor_from_pep3118_format_fast`, `_core/src/multiarray/buffer.c:1002`, and followed by the item size check of `_array_from_buffer_3118`, `_core/src/multiarray/ctors.c:1245`. All of it is what `memoryview(np.zeros(n, dtype)).format` and `np.array(memoryview(...))` run.
+The writing side is `_buffer_format_string`, `_core/src/multiarray/buffer.c:191`. The reading side is `_dtype_from_pep3118`, `_core/_internal.py:627`, preceded by the C fast path `_descriptor_from_pep3118_format_fast`, `_core/src/multiarray/buffer.c:1002`, and followed by the item size check of `_array_from_buffer_3118`, `_core/src/multiarray/ctors.c:1247`. All of it is what `memoryview(np.zeros(n, dtype)).format` and `np.array(memoryview(...))` run.
 
 The model assumes the platform of the reference runs: little-endian, `long` of 8 bytes, `long double` of 8 bytes (macOS arm64, where `long double` is `double` but still its own NumPy type) and a freshly allocated array whose data pointer is aligned to 16 bytes. The alignments in `codeAlign` come from `np.dtype(...).alignment` on that platform.
 -/
@@ -831,13 +831,13 @@ where
 /-! ### Writing the format string -/
 
 inductive FErr where
-  /-- `ValueError: cannot include dtype 'M' in a buffer`, the `default` of the switch at `buffer.c:399`. -/
+  /-- `ValueError: cannot include dtype 'M' in a buffer`, the `default` of the switch at `buffer.c:421`. -/
   | notInBuffer
-  /-- `ValueError: cannot expose native-only dtype 'g' in non-native byte order '>' via buffer interface`, `buffer.c:353`. -/
+  /-- `ValueError: cannot expose native-only dtype 'g' in non-native byte order '>' via buffer interface`, `buffer.c:359`. -/
   | nativeOnly
-  /-- `ValueError: dtypes with overlapping or out-of-order fields are not representable as buffers`, `buffer.c:279`. -/
+  /-- `ValueError: dtypes with overlapping or out-of-order fields are not representable as buffers`, `buffer.c:285`. -/
   | overlap
-  /-- `ValueError: ':' is not an allowed character in buffer field names`, `buffer.c:115`. -/
+  /-- `ValueError: ':' is not an allowed character in buffer field names`, `buffer.c:116`. -/
   | colon
   deriving DecidableEq, Repr
 
@@ -869,7 +869,7 @@ def typeStr (c : Char) (std : Bool) (size : Nat) : Option String :=
   | 'V' => some (toString size ++ "x")
   | _ => none
 
-/-- The leaf branch, `buffer.c:312` to `buffer.c:413`. -/
+/-- The leaf branch, `buffer.c:312` to `buffer.c:434`. -/
 def scalarFormat (top : Bool) (n stride : Nat) (st : FS) (order c : Char) (size : Nat) : Except FErr FS :=
   let nativeOnly := c == 'g' || c == 'G'
   let aligned := isNativelyAligned top n stride c size st.off
@@ -915,7 +915,7 @@ where
           if nm.toList.contains ':' then .error .colon
           else fmtFields n stride base rest { st2 with out := st2.out ++ ":" ++ nm ++ ":" }
 
-/-- The format string of `memoryview(np.zeros(n, dtype))`, `_buffer_info_new`, `buffer.c:462`. -/
+/-- The format string of `memoryview(np.zeros(n, dtype))`, `_buffer_info_new`, `buffer.c:463`. -/
 def bufferFormat (n : Nat) (d : D) : Except FErr String :=
   match fmtD true n d.size d { out := "", off := 0, active := '@' } with
   | .ok st => .ok st.out
@@ -968,15 +968,23 @@ def pyInt (l : List Char) : Option Int :=
   | '+' :: r => (ds r).map fun n => (n : Int)
   | _ => (ds l).map fun n => (n : Int)
 
+/-- `str.split(',')` on characters. -/
+def splitComma : List Char → List (List Char)
+  | [] => [[]]
+  | c :: r =>
+    match splitComma r with
+    | [] => [[c]]
+    | h :: rest => if c == ',' then [] :: h :: rest else (c :: h) :: rest
+
 /-- `tuple(map(int, shape.split(',')))`. -/
 def parseShape (l : List Char) : Option (List Int) :=
-  ((String.ofList l).splitOn ",").mapM fun p => pyInt p.toList
+  (splitComma l).mapM pyInt
 
 /-- The characters of `type_map_chars`: `g` is only there for the native map. -/
 def typeChars (native : Bool) : List Char :=
   "?cbBhHiIlLqQefdZswOx".toList ++ (if native then ['g'] else [])
 
-/-- `_pep3118_native_map` and `_pep3118_standard_map`, `_internal.py:545` and `_internal.py:581`, as the NumPy type character of the result. The standard `l` is a 4 byte integer, so it maps to `i`. -/
+/-- `_pep3118_native_map` and `_pep3118_standard_map`, `_internal.py:532` and `_internal.py:559`, as the NumPy type character of the result. The standard `l` is a 4 byte integer, so it maps to `i`. -/
 def lookupType (native : Bool) (tc : String) : Option Char :=
   match tc with
   | "?" => some '?' | "c" => some 'S' | "b" => some 'b' | "B" => some 'B'
@@ -990,7 +998,7 @@ def lookupType (native : Bool) (tc : String) : Option Char :=
   | "s" => some 'S' | "w" => some 'U' | "O" => some 'O' | "x" => some 'V'
   | _ => none
 
-/-- `_add_trailing_padding`, `_internal.py:790`. A structured value keeps its fields, any other value becomes the field `f0`. -/
+/-- `_add_trailing_padding`, `_internal.py:794`. A structured value keeps its fields, any other value becomes the field `f0`. -/
 def addTrailingPadding (v : D) (pad : Nat) : D :=
   match v with
   | .struct n fs => .struct (n + pad) fs
@@ -1003,7 +1011,7 @@ def mkSub (shape : List Int) (value : D) : Except PErr D :=
     | .struct _ _ => pure (D.sub (shape.map Int.toNat) value)
     | _ => if value.size == 0 then throw PErr.value else pure (D.sub (shape.map Int.toNat) value)
 
-/-- `_fix_names`, `_internal.py:773`. -/
+/-- `_fix_names`, `_internal.py:779`. -/
 def fixNames : List String → List (Option String) → List String
   | done, [] => done
   | done, none :: rest =>
@@ -1016,7 +1024,7 @@ def zipFields : List String → List Nat → List D → List (String × Nat × D
   | n :: ns, o :: os, f :: fs => (n, o, f) :: zipFields ns os fs
   | _, _, _ => []
 
-/-- The end of `__dtype_from_pep3118`, `_internal.py:733` to `_internal.py:748`. -/
+/-- The end of `__dtype_from_pep3118`, `_internal.py:762` to `_internal.py:777`. -/
 def finishParse (ps : PS) (acc : Acc) (isSub : Bool) : D × Nat × PS :=
   let itemsize := if ps.bo == '@' then acc.itemsize + (acc.common - acc.offset % acc.common) % acc.common else acc.itemsize
   match acc.names, acc.offsets, acc.formats with
@@ -1121,7 +1129,7 @@ def parseFormat (spec : List Char) : Except PErr D :=
   | .ok (d, _, _) => .ok d
   | .error e => .error e
 
-/-- `_pep3118_letter_to_type`, `buffer.c:1086`, as a type character and an item size. -/
+/-- `_pep3118_letter_to_type`, `buffer.c:1077`, as a type character and an item size. -/
 def fastLetter (native complex : Bool) : Char → Option (Char × Nat)
   | '?' => some ('?', 1) | 'b' => some ('b', 1) | 'B' => some ('B', 1)
   | 'h' => some ('h', 2) | 'H' => some ('H', 2)
@@ -1163,7 +1171,7 @@ def fastLoop (order : Char) (std : Bool) (seen : Option (Char × Nat)) : List Ch
 /-- `NumPyOS_ascii_isspace`. -/
 def isSpaceC (c : Char) : Bool := c == ' ' || (9 ≤ c.toNat && c.toNat ≤ 13)
 
-/-- Whitespace is stripped except inside `:name:`, `buffer.c:942`. -/
+/-- Whitespace is stripped except inside `:name:`, `buffer.c:936`. -/
 def stripWs : Bool → List Char → List Char
   | _, [] => []
   | inName, c :: r =>
@@ -1175,7 +1183,7 @@ inductive RErr where
   | format (e : FErr)
   /-- `ValueError: '...' is not a valid PEP 3118 buffer format string`, wrapping any error of the parser. -/
   | parse
-  /-- `RuntimeError: Item size ... for PEP 3118 buffer format string ... does not match the dtype ... item size`, `ctors.c:1259`. -/
+  /-- `RuntimeError: Item size ... for PEP 3118 buffer format string ... does not match the dtype ... item size`, `ctors.c:1262`. -/
   | itemsize
   deriving DecidableEq, Repr
 
